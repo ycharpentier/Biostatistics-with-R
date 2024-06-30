@@ -1,0 +1,55 @@
+---
+title: "Analyse de survie"
+author: "yoan"
+date: "2024-06-30"
+output: html_document
+---
+
+# Données de survie
+
+qu'on cherche à expliquer désigne la [**durée d'un processus**]{.underline} *(durée de mariage)* ou de [**durée avant la survenue d'un évènement**]{.underline} *(durée de survie d'un patient avec un infarctus du myocarde).*
+
+La variable $$Y$$ a plusieurs caractéristiques :
+
+-   $Y\geq 0$ et sa distribution est généralement différente d'une loi normale
+
+-   La variable $Y$ n’est pas forcément observée ou mesurée pendant le laps de temps de l’étude, on dit alors que la variable $Y$ est ”censurée”
+
+```{r}
+curve(dgamma(x, shape = 2, scale = 1), from = 0, to = 10, col = "red")
+```
+
+Deux paramètres doivent être contenus dans la variable $$Y$$:
+
+1.  Le temps (sec, min, jour, etc.) : variable discrète
+
+2.  La survenue ou non de l'évènement étudié (1 si oui, 0 sinon) : variable discrète
+
+```{r}
+library(survival)
+#help(package = "survival")
+help("Surv")
+timeOFevent <- c(3, 6, 6, 8, 9, 10, 14, 16, 17, 18)
+event <- c(1, 1, 1, 0, 1, 1, 0, 1, 1, 1)
+Surv(timeOFevent, event)
+```
+
+# Fonctions utiles
+
+## Fonction de densité
+
+Soit $$t\geq 0$$ , le temps et $$\mu\geq 0$$ la durée moyenne de survie d'un individu. Un modèle simple régulièrement utilisé est le modèle de densité exponentielle :
+
+$$
+f(t) = \frac{1}{\mu}e^{-\frac{1}{\mu}t}
+$$
+
+D'ailleurs :
+
+$$
+f(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t)}{\Delta t} = \frac{dF(t)}{dt}
+$$
+
+Avec $$T$$, la v.a continue positive qui représente le temps de survie d'un individu par exemple.
+
+D'un point de vue du biologiste, la fonction $$f$$ de densité correspond à la proportion de décès entre $$t$$ et $$\Delta t$$ rapporté au nombre total d'individus à l'instant initial $$t_0$$.
