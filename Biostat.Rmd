@@ -1,0 +1,374 @@
+---
+title: "Analyse de survie"
+author: "yoan"
+date: "2024-06-30"
+output: bookdown::html_document2
+---
+
+# Données de survie
+
+qu'on cherche à expliquer désigne la [**durée d'un processus**]{.underline} *(durée de mariage)* ou de [**durée avant la survenue d'un évènement**]{.underline} *(durée de survie d'un patient avec un infarctus du myocarde).*
+
+La variable $Y$ a plusieurs caractéristiques :
+
+-   $Y\geq 0$ et sa distribution est généralement différente d'une loi normale
+
+-   La variable $Y$ n’est pas forcément observée ou mesurée pendant le laps de temps de l’étude, on dit alors que la variable $Y$ est ”censurée”
+
+```{r}
+curve(dgamma(x, shape = 2, scale = 1), from = 0, to = 10, col = "red")
+```
+
+Deux paramètres doivent être contenus dans la variable $Y$:
+
+1.  Le temps (sec, min, jour, etc.) : variable discrète
+
+2.  La survenue ou non de l'évènement étudié (1 si oui, 0 sinon) : variable discrète
+
+```{r}
+library(survival)
+#help(package = "survival")
+#help("Surv")
+timeOFevent <- c(3, 6, 6, 8, 9, 10, 14, 16, 17, 18)
+event <- c(1, 1, 1, 0, 1, 1, 0, 1, 1, 1)
+Surv(timeOFevent, event)
+```
+
+# Fonctions utiles
+
+## Fonction de densité
+
+Soit $t\geq 0$ , le temps et $\mu \geq 0$ la durée moyenne de survie d'un individu. Un modèle simple régulièrement utilisé est le modèle de densité exponentielle :
+
+$$
+f(t) = \frac{1}{\mu}e^{-\frac{1}{\mu}t}
+$$
+
+D'ailleurs :
+
+$$
+f(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t)}{\Delta t} = \frac{dF(t)}{dt}
+$$
+
+Avec $T$, la v.a continue positive qui représente le temps de survie d'un individu par exemple.
+
+::: {style="color:red;"}
+D'un point de vue du biologiste, la fonction $f$ de densité correspond à la proportion de décès entre $t$ et $\Delta t$ rapporté au nombre total d'individus à l'instant initial $t_0$.
+:::
+
+## Fonction de répartition
+
+On a $F$ la fonction de répartition associée à la fonction de densité $f$.
+
+$$
+\begin{align*}
+F(t) &= \mathbb{P}(T\leq t)\\
+F(t) &= \int_{-\infty}^t f(x)dx=\int_{-\infty}^0f(x)dx+\int_0^tf(x)dx=\int_0^tf(x)dx\\
+F(t) &=\int_0^t\frac{1}{\mu}e^{-\frac{1}{\mu}x}dx\\
+F(t) &= 1-e^{-\frac{1}{\mu}t}
+\end{align*}
+$$
+
+*La deuxième étape n'est possible que parce que* $T$ *ne peut être que positive.*
+
+Rappel : pour une variable aléatoire continue positive comme le temps ou la durée de survie $T$, la fonction $F$ de répartition correspond à l'air sous la courbe de la fonction de densité.
+
+## Fonction de survie
+
+Soit $S$ la fonction de survie :
+
+$$
+\begin{align*}
+S(t) &= \mathbb{P}(T>t) = 1- \mathbb{P}(T<t) = 1 - F(t)\\
+S(t) &= 1-F(t) = 1-\left(1-e^{-\frac{1}{\mu}t}\right)\\
+S(t) &= e^{-\frac{1}{\mu}t}
+\end{align*}
+$$
+
+Remarque : $S(t) = \int_t^{+\infty} f(x) dx$, $S(0)=1$, $S(\infty)=0$
+
+## Fonction de risque
+
+Soit $h$ la fonction de risque :
+
+$$
+\begin{align*}
+h(t) &= \frac{f(t)}{S(t)} = \frac{\frac{1}{\mu}e^{-\frac{1}{\mu}t}}{e^{-\frac{1}{\mu}t}} = \frac{1}{\mu}
+\end{align*}
+$$
+
+D'ailleurs :
+
+$$
+h(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t | T>t)}{\Delta t}
+$$
+
+::: {style="color:red;"}
+D'un point de vue du biologiste, la fonction $h$ de risque correspond au taux de mortalité instantané entre $t$ et $\Delta t$ sachant que le temps de survie $T$ est supérieur à $t$.
+:::
+
+## Exemple graphique
+
+```{r, out.width="125%"}
+t <- seq(0, 10, 0.01)
+
+# Définir les fonctions
+f <- function(mu, t){
+  return((1/mu) * exp(-t/mu))
+}
+
+F <- function(mu, t){
+  return(1 - exp(-t/mu))
+}
+
+S <- function(mu, t){
+  return(exp(-t/mu))
+}
+
+h <- function(mu, t){
+  return(f(mu,t) / S(mu,t))
+}
+
+# Définir les couleurs pour chaque valeur de mu
+colors <- c("red", "blue", "green")
+mu <- c(2, 3, 4)
+
+
+# Configuration de la disposition des graphiques
+par(mfrow = c(2, 2))
+
+# Fonction de densité
+plot(t, f(mu[1], t), type = "l", col = colors[1], lwd = 3, ylab = "f(t)", main = "Fonction de densité")
+for(i in 2:length(mu)){
+  lines(t, f(mu[i], t), col = colors[i], lwd = (-mu[i]+5))
+}
+
+# Tracer la fonction de répartition
+plot(t, F(mu[1], t), type = "l", col = colors[1], lwd = 3, ylab = "F(t)", main = "Fonction de répartition")
+for(i in 2:length(mu)){
+  lines(t, F(mu[i], t), col = colors[i], lwd = (-mu[i]+5))
+}
+
+
+# Tracer la fonction de survie pour chaque mu avec des couleurs différentes
+plot(t, S(mu[1], t), type = "l", col = colors[1], lwd = 3, ylab = "S(t)", main = "Fonction de survie")
+for(i in 2:length(mu)){
+  lines(t, S(mu[i], t), col = colors[i], lwd = (-mu[i]+5))
+}
+
+
+#Fonction de risque
+plot(t, h(mu[1], t), type = "l", col = colors[1], lwd = 3, ylab = "h(t)", main = "Fonction de risque instantané", ylim = c(0,0.55))
+for(i in 2:length(mu)){
+  lines(t, h(mu[i], t), col = colors[i], lwd = (-mu[i]+5))
+}
+```
+
+Attention, le modèle exponentiel présenté plus tôt, dont la fonction $h$ de risque est constante au cours du temps est peu réaliste dans le cadre du suivi de la survie des organismes biologiques :
+
+-   Pour l'être humain, le risque de décès ($h$) est relativement faible pendant la période infantile et croît de manière exponentielle avec l'âge pour atteindre un risque maximum chez les personnes âgées.
+
+-   Chez les [salmonidés](https://fr.wikipedia.org/wiki/Salmonidae){style="color: blue;"} *(poissons...)* est au contraire à son maximum au début de leurs cycles de vie et tend à décroître avec l'âge.
+
+Les modèles de **Weibull**, de **Gompertz**, ou de **Makeham** sont en général utilisés avec des paramètres positifs *(e.g., être humains)* soit négatifs *(e.g., salmonidés)* pour refléter ces tendances.
+
+::: {style="color:red;"}
+Chez l'homme, le modèle de **Makeham** est le meilleur car il permet, après la naissance, de prédire un risque constant *(e.g., accident et suicides)* qui croît exponentiellement ensuite.
+:::
+
+## Relation entre la fonction de risque et la fonction de survie
+
+On sait que la fonction $h$ de risque admet comme égalité :
+
+$$
+\begin{align*}
+h(t) &= \frac{f(t)}{S(t)} = \frac{\frac{dF(t)}{dt}}{S(t)} = \frac{\frac{d(1-S(t))}{dt}}{S(t)} = - \frac{1}{S(t)}\frac{dS(t)}{dt}\\
+&\Leftrightarrow h(t)dt = - \frac{dS(t)}{S(t)} \\
+&\Leftrightarrow \int_0^th(x)dx=-\int_0^t \frac{dS(x)}{S(x)} dx\\
+&\Leftrightarrow H(t) = - [ ln(S(t))-ln(S(0))] &\text{$H$ est la fonction de risque cumulé}\\
+&\Leftrightarrow \color{red}{H(t) = -ln(S(t))}\\
+&\Leftrightarrow \color{red}{S(t) = e^{-\int_0^th(x)ds}}
+\end{align*}\\
+$$
+
+## Exemples de modèles : Rayleigh et Weibull
+
+Selon les modèles dont la fonction $h$ de risque n'est pas constante au cours du temps, l'impact sur la fonction $S$ de survie sera différent.
+
+Pour le modèle de **Weibull** par exemple, on a $h(t)=\alpha \lambda (\lambda t)^{\alpha -1}$. Calculer la fonction de survie associée :
+
+$$
+\begin{align*}
+\text{On sait que :}\\
+&S(t) = e^{-\int_0^th(x)dx} =e^{-A}\\
+\text{On calcule séparément } A\\
+&A = \int_0^t \alpha \lambda(\lambda t)^{\alpha -1}dx = \alpha \lambda^\alpha[x^\alpha/\alpha]_0^t = \alpha \lambda ^\alpha \times(t^\alpha /\alpha -0)\\
+&A = (\lambda t)^\alpha\\
+\text{Ainsi}\\
+&S(t) = e^{-\lambda^\alpha t^\alpha}
+\end{align*} 
+$$
+
+```{r}
+h1 <- function(t){
+  return(0.001+0.005*t)
+}
+h2<-function(t){
+  return(5*0.01*(0.01*t)^{5-1})
+}
+
+S <- function(t) {
+  v = integrate(h1, lower = 0, upper = t)$value
+  return(exp(-v))
+}
+
+t = seq(0, 100, 1)
+
+par(mfrow = c(1, 2))
+
+plot(t,h1(t),type = "l", main="Fonction de risque Rayleigh", ylim=c(0,.5))
+
+S_values <- sapply(t, S)
+plot(t, S_values, type = "l", col = "blue", lwd = 2, xlab = "t", ylab = "S(t)")
+grid()
+
+```
+
+# Estimation de la fonction de survie
+
+## Estimateur de Kaplan-Meier
+
+En pratique, on estime la fonction de survie $S$ à partir des données.
+
+La formule de **Kaplan-Meier** pour le calcul de l'estimation de la fonction de survie $S$ :
+
+$n_i$ étant le nombre d'observations restantes non censurées (= nb de survivants) juste avant $t_i$. Et $d_i$ est le nombre d'évènements (=nb de décès) observés à l'instant $t_i$.
+
+$$
+\begin{align*}
+\hat{S}(t_j)&=\prod_{i=1}^j \mathbb{P}(T>t_j|T\geq t_j)=\prod_{i=1}^j\frac{n_i-d_i}{n_i}\\
+\hat{S}(t_j)&=\frac{n_j-d_j}{n_j} \prod_{i=1}^{j-1}\frac{n_i-d_i}{n_i}\\
+\hat{S}(t_j)&=\frac{n_j-d_j}{n_j} \hat{S}(t_{j-1}) &\text{Proportion de survivants en $t_j$} 
+\end{align*}
+$$
+
+```{r}
+library(survival)
+
+timeOFevent <- c(3, 6, 6, 8, 9, 10, 14, 16, 17, 18)
+event <- c(1, 1, 1, 0, 1, 1, 0, 1, 1, 1)
+Surv(timeOFevent, event)
+```
+
+Ce vecteur représente la variable à expliquer : $Y$. On voit que:
+
+-   10 évènement sont survenus, il y a donc 10 individus étudiés.
+
+-   Les données obtenues au temps 8 et 14 sont censurés : ils ne figureront pas dans l'estimateur de **Kaplan**.
+
+-   Le temps 6 apparaît deux fois. Cela indique qu'il y a eu deux évènements en cette période de temps. *(2 individus morts par exemple)*
+
+On résume ces observations dans le tableau suivant tableau :
+
+| $t_j$ | $n_j$                                                                               | $d_j$            | $q_j$ | $\hat{S}(t_j)$                                                                              |
+|---------------|---------------|---------------|---------------|---------------|
+| 0     | $\color{blue}{10}$                                                                  | $\color{red}{0}$ | 0     | $\color{blue}{10}-\color{red}{0}/\color{blue}{10}=\color{green}{1}$                         |
+| 3     | $\color{blue}{n_{0}}-\color{red}{d_{0}}-q_{0} = \color{blue}{n_3}=\color{blue}{10}$ | $\color{red}{1}$ | 0     | $\color{green}{\hat{S}(t_0)}\times (\color{blue}{n_3}-\color{red}{d_3})=\color{green}{0.9}$ |
+| 6     | $\color{blue}{{n_3}}-\color{red}{d_{3}}-q_{3} = \color{blue}{n_6}=\color{blue}{9}$  | $\color{red}{2}$ | 1     | $\color{green}{\hat{S}(t_3)}\times (\color{blue}{n_6}-\color{red}{d_6})=\color{green}{0.7}$ |
+| 9     | 6                                                                                   | ${1}$            | 0     | 0.58                                                                                        |
+| 10    | 5                                                                                   | $1$              | 1     | 0.47                                                                                        |
+| 16    | 3                                                                                   | $1$              | 0     | 0.31                                                                                        |
+| 17    | 2                                                                                   | $1$              | 0     | 0.16                                                                                        |
+| 18    | 1                                                                                   | $1$              | 0     | 0                                                                                           |
+
+*Avec* $q_j$ le nombre d'observations censurées entre $t_j$ et $t_{j+1}$
+
+On interprète le tableau de la manière suivante :
+
+1.  À chaque temps où se produit un évènement, compte le nombre d'évènement qui se produise sur la même période. Aussi, on compte sur la même période les éventuelles données censurées. On actualise l'estimation de survie en fonction du temps précédent avec la formule de **Kaplan**.
+
+2.  Au temps suivant, on déduit des survivants les décès et censures du temps [précédent]{.underline} ! Et on reprend la même procédure.
+
+## Estimation de la variance de l'estimation de la fonction de survie par Greenwood
+
+La formule de **Greenwood** permet d'estimer la variance de la fonction de survie $S$.
+
+$$
+\hat{\sigma}\left(\hat{S}(t_j)\right) = \hat{S}(t_j)^2\sum_{i=1}^j\frac{d_i}{n_i(n_i-d_i)}
+$$
+
+## Intervalle de confiance de l'estimation de la fonction de survie
+
+$$
+IC_{95\%}\left(S(t_j)\right) = \hat{S}(t_j) \pm 1.96\times\hat{\sigma}\left(\hat{S}(t_j)\right)
+$$
+
+## Exemple
+
+Le tableau ([Estimateur de Kaplan-Meier]) peut être effectué avec R !
+
+```{r}
+Y = Surv(timeOFevent, event)
+summary(survfit(Y~1,conf.type="plain"))
+```
+
+Et on peut également afficher cette courbe :
+
+```{r}
+plot(survfit(Y~1, conf.type="plain"), col="blue", lwd=2,main='Courbe de Kaplan')
+```
+
+## Exercices
+
+[Importer les données et les rendre exploitable]{.underline}
+
+```{r}
+data = read.table("leucemie_data.txt", header = TRUE, sep="\t")
+str(data)
+data$temps = as.numeric(data$temps)
+data$status = as.numeric(data$status)
+data$groupe = as.factor(data$groupe)
+str(data)
+```
+
+[Tracer la courbe de **Kaplan**:]{.underline}
+
+```{r}
+library(survival)
+Y = Surv(time = data$temps,event=data$status)
+plot(survfit(Y~1))
+```
+
+[Tracer la courbe de **Kaplan** de chaque groupe]{.underline}
+
+```{r}
+t1 <- data$temps[data$groupe==1]
+e1 <- data$status[data$groupe==1]
+Y1 <- Surv(t1,e1)
+
+t2 <- data$temps[data$groupe==2]
+e2 <- data$status[data$groupe==2]
+Y2 <- Surv(t2,e2)
+
+plot(survfit(Y1~1), col="blue", main="Estimation Kaplan de la fonction de survie des patients\n atteints d'une leucémie traitée ou non")
+lines(survfit(Y2~1),col="red")
+legend(0,0.2,legend=c("Treatment", "Placebo"), col=c("blue", "red"),
+       lty=c(1,1), cex = 0.7)
+```
+
+[Obtenez le temps médian de rémission des patients atteints de leucémie dans chacun des deux groupes. Expliquer pourquoi la moyenne n'a pas de sens.]{.underline}
+
+On cherche le temps médian car on a des observations censurées !
+
+Par lecture graphique on voit que pour le groupe sans placébo, c'est 8 semaines et pour le groupe avec traitement c'est 23 semaines. Cette observation est confirmée par :
+
+```{r}
+survfit(Y1~1)
+survfit(Y2~1)
+
+survfit(Surv(data$temps,data$status)~data$groupe)
+```
+
+Cette différence est-elle significative ? La suite dans le prochain chapitre !
+
+# Test d’une différence de survie entre plusieurs échantillons
