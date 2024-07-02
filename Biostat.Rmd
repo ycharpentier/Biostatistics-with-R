@@ -3,27 +3,48 @@ title: "Analyse de survie"
 author: "yoan"
 date: "2024-06-30"
 output: bookdown::html_document2
+header-includes:
+   - \usepackage{bbm}
+   - \usepackage{dsfont}
+bibliography: references.bib
+nocite: '@*'
 ---
 
 # Données de survie
 
-qu'on cherche à expliquer désigne la [**durée d'un processus**]{.underline} *(durée de mariage)* ou de [**durée avant la survenue d'un évènement**]{.underline} *(durée de survie d'un patient avec un infarctus du myocarde).*
+En médecine et en biologie, on s'intéresse souvent à des durées :
+
+-   Durée de survie de patients ayant fait un AVC
+
+-   Durée de fièvre chez un patient atteint de pneumonie
+
+-   Durée de rémission d'une leucémie aigüe
+
+Il est important de distinguer l'[**évènement d'intérêt**]{.underline} *(décès, fin de rémission, début des symptômes,fin de la fièvre, etc.)* de la [**variable à expliquer**]{.underline} (variable d'intérêt) *(temps écoulé avant décès, temps écoulé avant la fin de la rémission, temps écoulé avant la fin de la fièvre, etc.)*
+
+La variable $Y$ qu'on cherche à expliquer désigne la [**durée d'un processus**]{.underline} *(durée de mariage)* ou de [**durée avant la survenue d'un évènement**]{.underline} *(durée de survie d'un patient avec un infarctus du myocarde).* Ces durées ont pour début l'entrée en étude du sujet.
+
+<center>
+
+![Schéma précisant la nature de la variable Y](images/clipboard-274189261.png){style="align:center;" width="537"}
+
+</center>
 
 La variable $Y$ a plusieurs caractéristiques :
 
 -   $Y\geq 0$ et sa distribution est généralement différente d'une loi normale
 
--   La variable $Y$ n’est pas forcément observée ou mesurée pendant le laps de temps de l’étude, on dit alors que la variable $Y$ est ”censurée”
-
 ```{r}
-curve(dgamma(x, shape = 2, scale = 1), from = 0, to = 10, col = "red")
+curve(dgamma(x, shape = 2, scale = 1), from = 0, to = 10, col = "red", main="Exemple de loi assymétrique : loi Gamma")
 ```
 
-Deux paramètres doivent être contenus dans la variable $Y$:
+-   $Y$ est continue (c'est une durée!)
 
-1.  Le temps (sec, min, jour, etc.) : variable discrète
+-   Deux paramètres doivent être contenus dans la variable $Y$:
 
-2.  La survenue ou non de l'évènement étudié (1 si oui, 0 sinon) : variable discrète
+    -   Le temps (sec, min, jour, etc.) : variable discrète
+
+    -   La survenue ou non de l'évènement étudié (1 si oui, 0 sinon) : variable discrète
 
 ```{r}
 library(survival)
@@ -33,6 +54,63 @@ timeOFevent <- c(3, 6, 6, 8, 9, 10, 14, 16, 17, 18)
 event <- c(1, 1, 1, 0, 1, 1, 0, 1, 1, 1)
 Surv(timeOFevent, event)
 ```
+
+-   La variable $Y$ n’est pas forcément observée ou mesurée pendant le laps de temps de l’étude, on dit alors que la variable $Y$ est ”censurée” :
+
+# Censure
+
+Dans une étude où l'on suit les patients au cours du temps ("follow-up study" en anglais), les patients rentrent à des instants différents et l'évènement d'intérêt se produit à des instants différents.
+
+Voici un exemple pour mieux comprendre :
+
+<center>![](images/clipboard-2434670792.png){width="463"}</center>
+
+1.  Pour l'individu 1, la variable d'intérêt $Y_1$ est observée
+2.  Pour l'individu 2, la variable d'intérêt $Y_2$ [n'est pas observée]{.underline}. Seule la variable $C_2$ est observée ! C'est un cas de **censure administrative**.
+3.  Pour l'individu 3, la variable d'intérêt $Y_3$ [n'est pas observée]{.underline}. Seule la variable $C_3$ est observée ! C'est un cas de **perte de vue du sujet**.
+4.  Pour l'individu 4, la variable d'intérêt $Y_4$ est observée.
+
+On identifie à partir de là **trois grandeurs** pour un individu $i=1,\dots,n$ :
+
+-   Son temps de survie $Y_i$
+
+-   Son temps de censure $C_i$
+
+-   La durée réellement observée $T_i$
+
+## Moment de la censure
+
+-   **Censure à droite** : Chez certains patients, on n'observe pas le moment où se produit l'évènement à cause d'une censure à droite. Les deux raisons principales sont :
+
+    -   Le patient abandonne l'étude (quitter spontanément, indisponibilité, déménagement, etc.)
+
+    -   L'étude s'achève avant que l'évènement ne se produise ([censure administrative]{.underline})
+
+-   **Censure à gauche** : Il s’agit du cas où la date d’origine n’est pas observée de telle sorte que la durée de vie n’est, là encore, pas connue, que l’évènement d’intérêt se soit produit ou non
+
+-   **Censure par intervalle** : la date de changement d’état n’est pas renseignée, mais un intervalle de temps est connu. Ce phénomène est caractéristique des enquêtes où le suivi est réalisé avec des rendez-vous réguliers. La seule information disponible sur la durée de survie est caractérisée par les dates des rendez-vous entre lesquelles l’évènement d’intérêt s’est produit
+
+## Type de censure
+
+On distingue les censure par la date d'origine de l'évènement, on distingue aussi -et surtout- les censures par leur [**mécanisme générateur**]{.underline}.
+
+1.  **La censure de type I** (fixée)\
+    C'est la [censure administrative]{.underline}\
+    Soit $C$ une valeur fixée. Au lieu d'observer la variable $Y_i$ sur toute la durée, on n'observe uniquement $Y_i\leq C$. On utilise la notation $T_i = Y_i \wedge C = min(Y_i,C)$ (cas à droite) . Dans ce cas, la durée n'est pas observable au-delà (ou avant) d'une durée maximale fixée à l'avance et est identique à tous les individus. \
+    [*Exemple*]{.underline} *: on étudie sur 5 ans l'apparition de cancers. Au bout de 5 ans, certains patients n'ont pas développé de cancers : ces données sont censurées de type I (fin de l'étude)*
+
+2.  **La censure de type II** (attente)\
+    Le protocole de collecte suppose d'observer les durées de vie de $n$ individus jusqu'à ce que $R$ individus aient vu l'évènement d'intérêt se produire. \
+    [*Exemple*]{.underline} *: les données* $Y_1\leq \dots \leq Y_R$ sont récupérées, toutes les observations entre $R$ et $n$ sont censurées de type II
+
+3.  **La censure de type III** (aléatoire) \
+    Il s'agit d'une information incomplète liée à un [évènement non fixé]{.underline} par le protocole de suivi. Cette censure arrive lors de la sortie de l'étude d'un sujet avant la fin de la période de suivi fixée par le protocole. *(exemple à droite)\
+    *À droite, les données disponibles sont les suivantes : $T_i = Y_i  \wedge C_i$, $\mathds{1}$ \
+    [*Exemple*]{.underline} *: perte de vue, arrêt ou changement de traitement*
+
+## Exemple
+
+# Motivation du travail
 
 # Fonctions utiles
 
@@ -271,7 +349,7 @@ Ce vecteur représente la variable à expliquer : $Y$. On voit que:
 On résume ces observations dans le tableau suivant tableau :
 
 | $t_j$ | $n_j$                                                                               | $d_j$            | $q_j$ | $\hat{S}(t_j)$                                                                              |
-|---------------|---------------|---------------|---------------|---------------|
+|---------------|------------------|---------------|---------------|---------------|
 | 0     | $\color{blue}{10}$                                                                  | $\color{red}{0}$ | 0     | $\color{blue}{10}-\color{red}{0}/\color{blue}{10}=\color{green}{1}$                         |
 | 3     | $\color{blue}{n_{0}}-\color{red}{d_{0}}-q_{0} = \color{blue}{n_3}=\color{blue}{10}$ | $\color{red}{1}$ | 0     | $\color{green}{\hat{S}(t_0)}\times (\color{blue}{n_3}-\color{red}{d_3})=\color{green}{0.9}$ |
 | 6     | $\color{blue}{{n_3}}-\color{red}{d_{3}}-q_{3} = \color{blue}{n_6}=\color{blue}{9}$  | $\color{red}{2}$ | 1     | $\color{green}{\hat{S}(t_3)}\times (\color{blue}{n_6}-\color{red}{d_6})=\color{green}{0.7}$ |
@@ -372,3 +450,151 @@ survfit(Surv(data$temps,data$status)~data$groupe)
 Cette différence est-elle significative ? La suite dans le prochain chapitre !
 
 # Test d’une différence de survie entre plusieurs échantillons
+
+## Comparer deux fonctions de survie
+
+Il existe plusieurs tests pour comparer les fonctions de survie $S$ de deux échantillons *(e.g., deux groupes de patients)*, dont deux principaux :
+
+-   Le test de **Mantel-Haenszel** plus couramment appelé test du **log-rank** qui est le plus utilisé, le plus simple et le plus performant lorsque deux courbes de survie ne se [croisent pas]{.underline}.
+
+-   Le test de **Wilcoxon** (le but est de tester s'il existe un changement significatif sur la médiane)
+
+On utilisera toujours les deux mêmes hypothèses :
+
+::: {style="align:center;"}
+$H_0$ : pas de différence de survie entre les deux groupes étudiés
+
+$H_1$ : différence significative de survie entre les deux groupes étudiés
+:::
+
+On réalise ces deux tests à partir des $j$ **tables de contingence**, chacune détaillant pour chaque groupe $k$ le nombre d'évènements observés à l'instant $t_j\ (d_{jk})$ parmi le nombre d'observations restantes et non censurées juste avant $t_j$ $(n_{jk})$
+
+| Évènement à $t_j$       | Groupe $k=1$    | Groupe $k=2$    | Total         |
+|-------------------------|-----------------|-----------------|---------------|
+| Nb réalisés à $t_j$     | $d_{j1}$        | $d_{j2}$        | $d_{j}$       |
+| Nb non néalisés à $t_j$ | $n_{j1}-d_{j1}$ | $n_{j2}-d_{j2}$ | $n_{j}-d_{j}$ |
+| Total juste avant $t_j$ | $n_{j1}$        | $n_{j2}$        | $n_j$         |
+
+: [Table de contingence]
+
+On répète l'opération pour chaque instant $t_j$
+
+Exemple de notation :
+
+-   $n_j$ : nombre total de survivants juste avant $t_j$
+-   $d_j$ : nombre total de décès observés à l'instant $t_j$
+-   $n_{jk}$ : nopbre de survivants juste avant $t_j$ dans le groupe $k$
+-   $d_{jk}$ : nombre de décès observés à l'sintant $t_j$ pour le groupe $k$
+
+À partir de chaque table de contingence obtenue pour l’instant $t_j$, on calcul le nombre d’observations attendus sous l’hypothèse nulle $H_0$ d’égalité des fonctions de survie $S$ entre les deux groupes étudiés en utilisant cette relation :
+
+$$
+e_{jk}=\frac{d_jn_{jk}}{n_j}
+$$
+
+où $e_{jk}$ est le nombre de décès attendus sous $H_0$ à l'instant $t_j$ pour le groupe $k$ .
+
+De fait, on a le tableau suivant :
+
+| Évènement à $t_j$       | Groupe $k=1$    | Groupe $k=2$    | Total         |
+|-------------------------|-----------------|-----------------|---------------|
+| Nb réalisés à $t_j$     | $e_{j1}$        | $e_{j2}$        | $d_{j}$       |
+| Nb non néalisés à $t_j$ | $n_{j1}-e_{j1}$ | $n_{j2}-e_{j2}$ | $n_{j}-e_{j}$ |
+| Total juste avant $t_j$ | $n_{j1}$        | $n_{j2}$        | $n_j$         |
+
+Sous l'hypothèse $H_0$, l'estimation de la variance des $e_{jk}$ s'obtient par la formule :
+
+$$
+\hat{\sigma}^2(e_{jk})= \hat{\sigma}^2(e_{j1}) = \hat{\sigma}^2(e_{j2}) = \frac{n_{j1}n_{j2}d_j(n_j-d_j)}{n_j^2(n_j-1)}
+$$
+
+Le critère utilisé pour le test est le suivant :
+
+À partir des $m$ instants $t_j$ , $(1\leq j\leq m)$ , on calcule le criètre $Q_{obs}$ en fonction des observations qui sera comparé à sa valeur critique $Q_{crit}$ :
+
+$$
+Q_1 = \frac{\left(\sum_{j=1}^md_{j1}-\sum_{j=1}^me_{j1}\right)^2}{\sum_{j=1}^m \hat{\sigma}^2(e_{j1})}
+\ \ \ et\ \ \
+Q_2 = \frac{\left(\sum_{j=1}^md_{j2}-\sum_{j=1}^me_{j2}\right)^2}{\sum_{j=1}^m \hat{\sigma}^2(e_{j2})}
+$$
+
+À partir de là, on a
+
+$$
+Q_{obs}=Q_1=Q_2
+$$
+
+Et le critère sera choisi avec la loi de **khi-2**:
+
+$$
+Q_{crit} = \mathcal{X}^2_{1,1-\alpha/2}
+$$
+
+Dès lors, on rejettera $H_0$ si $Q_{obs}>Q_{crit}$
+
+# Modèle de Cox
+
+La forme générale du modèle de **Cox** est la suivante :
+
+$$
+h(t,X_i) = h_0(t)e^{\beta_1X_1+\dots+\beta_kX_k}
+$$
+
+Où $h$ est le risque, $h_0$ est le risque de base, $t$ le temps, $X_i$ les variables explicatives ou prédictives et $\beta_i$ les coefficients de la régression.
+
+On pose en général $\eta =\beta_1X_1+\dots+\beta_kX_k$ *(rmq : l'ordonnée à l'origine est incorporée dans le risque de base* $h_0$).
+
+En analyse de survie, on modélise donc la fonction $h$ de risque qui dans le cas du modèle de **Cox** correspond au produit de deux quantités :
+
+-   $h_0\geq 0$ : le risque de base qui est fonction uniquement du temps mais indépendant des variables explicatives
+
+-   $e^\eta\geq 0$ : l'exponentiel du terme $\eta$ à modéliser qui est fonction des variables explicatives mais indépendant du temps
+
+⚠️Attention, chaque variable explicative dans le modèle de **Cox** doit être [**indépendante du temps**]{.underline} *(sinon, passer au modèle de **Cox étendu**)* et [**non nulles**]{.underline} *(car quand toutes les variables explicatives sont nulles, alors le risque est égal au risque de base car* $e^0=1$*)*⚠️
+
+::: {style="color:red;"}
+Avec le modèle de **Cox** dit "semi paramétrique", il n'est pas nécessaire de spécifier le risque de base $h_0$ d'où sa grande popularité vis-à-vis des modèles purement paramétriques.
+:::
+
+## Risque proportionnel
+
+Le modèle de **Cox** repose sur la notion de [risques proportionnels]{.underline} :
+
+-   Si le test du **log-rank** permet de tester une différence significative de survie entre deux groupes par exemple, il n'est pas possible d'estimer l'étendu de l'impact de cette différence entre ces deux groupes
+
+-   Afin de quantitifer cet impact, on fait appel au [risque instantané]{.underline} de décès de chacun des deux groupes et nous recherchons une fonction simple les reliant
+
+-   Pour y arriver, nous nous basons sur une hypothèse essentielle : nous supposons que la proportion des risques instantanés de décès est constante pendant toute la durée de l'observation, d'où l'expression de ["risque proportionnels"]{.underline}
+
+### Risque instantané, hazard rate
+
+Le risque instantané décrit la probabilité selon laquelle un évènement (décès, diagnostic, maladie, etc.) précis se produira à un instant fixé, une date précise.
+
+### Risque proportionnel HR ou hazard ration
+
+Le risque proportionnel (HR) pour une variable $X_i$ est le rapport de deux risques instantanés pour un changement d'une unité (ou catégorie) de $X_i$ tout en maintenant les autres variables $X_{j\neq i}$.
+
+$$
+\begin{align*}
+h(t,X_1=1,X_{j\neq i} = cste)&=h_0(t)\times e^{\beta_1\times 1+ \dots + \beta_kX_k}\\
+h(t,X_1=2,X_{j\neq i} = cste)&=h_0(t)\times e^{\beta_1\times 2 +\dots + \beta_kX_k}\\
+HR &= \frac{h_0(t)\times e^{\beta_1\times 1+ \dots + \beta_kX_k}}{h_0(t)\times e^{\beta_1\times 2 +\dots + \beta_kX_k}} = e^{\beta_1\times(2-1)} = e^{\beta_1}
+\end{align*}
+$$
+
+### Interprétation pour une variable $X_i$
+
+$$
+HR=e^{\beta_i}\geq 0
+$$
+
+-   $\beta_i = 0 \Rightarrow HR=1$ : pas d'effet de la variable $X_i$ sur le risque global $h$
+
+-   $\beta_i >0 \Rightarrow HR>1$ : augmentation du risque global $h$ lié à la variable $X_i$
+
+-   $\beta_i < 0 \Rightarrow HR<1$ : diminution du risque global $h$ lié à la variable $X_i$
+
+# References
+
+::: {#refs}
+:::
