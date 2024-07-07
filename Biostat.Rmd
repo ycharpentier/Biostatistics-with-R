@@ -2,7 +2,17 @@
 title: "Analyse de survie"
 author: "yoan"
 date: "2024-06-30"
-output: bookdown::html_document2
+output: 
+  bookdown::html_document2 :
+    code_folding: hide
+    theme: united
+    df_print: paged
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+      
 header-includes:
    - \usepackage{bbm}
    - \usepackage{dsfont}
@@ -72,23 +82,28 @@ Voici un exemple pour mieux comprendre :
 
 On identifie à partir de là **trois grandeurs** pour un individu $i=1,\dots,n$ :
 
--   Son temps de survie $Y_i$
+-   Son temps de survie, temps de l'évènement : $Y_i$
 
 -   Son temps de censure $C_i$
 
--   La durée réellement observée $T_i$
+-   La durée réellement observée $T_i = min(Y_i,C_i)$
+
+-   L'observation $t_i$ pour le sujet $i$ de $T_i$
+
+-   Le statut de l'observation associé à la durée réellement observée $\delta_i$ ( $=1$ si l'évènement est observé )
 
 ## Moment de la censure
 
--   **Censure à droite** : Chez certains patients, on n'observe pas le moment où se produit l'évènement à cause d'une censure à droite. Les deux raisons principales sont :
+La qualification de la censure dépend du moment où l'évènement est ou n'est pas observé :
 
-    -   Le patient abandonne l'étude (quitter spontanément, indisponibilité, déménagement, etc.)
+-   **Censure à droite** : Chez certains patients, on n'observe pas le moment où se produit l'évènement à cause d'une censure à droite.\
+    [*Exemple*]{.underline} : *Le patient abandonne l'étude (quitter spontanément, indisponibilité, déménagement, etc.). L'étude s'achève avant que l'évènement ne se produise ([censure administrative]{.underline})*
 
-    -   L'étude s'achève avant que l'évènement ne se produise ([censure administrative]{.underline})
+-   **Censure à gauche** : Il s’agit du cas où la date d’origine n’est pas observée de telle sorte que la durée de vie n’est pas connue, que l’évènement d’intérêt se soit produit ou non. On ne connait pas toujours la date d'entrée dans l'étude.\
+    [*Exemple*]{.underline} *: étude du moment de descente des arbres des babouins de la réserve d'Amboli, Kenya. Si les biologistes arrivent alors qu'il est déjà descendu, on observe alors le maximum entre l'heure de descente et l'heure d'arrivée des observateurs.*
 
--   **Censure à gauche** : Il s’agit du cas où la date d’origine n’est pas observée de telle sorte que la durée de vie n’est, là encore, pas connue, que l’évènement d’intérêt se soit produit ou non
-
--   **Censure par intervalle** : la date de changement d’état n’est pas renseignée, mais un intervalle de temps est connu. Ce phénomène est caractéristique des enquêtes où le suivi est réalisé avec des rendez-vous réguliers. La seule information disponible sur la durée de survie est caractérisée par les dates des rendez-vous entre lesquelles l’évènement d’intérêt s’est produit
+-   **Censure par intervalle** : la date de changement d’état n’est pas renseignée, mais un intervalle de temps est connu. Ce phénomène est caractéristique des enquêtes où le suivi est réalisé avec des rendez-vous réguliers. La seule information disponible sur la durée de survie est caractérisée par les dates des rendez-vous entre lesquelles l’évènement d’intérêt s’est produit\
+    [*Exemple*]{.underline} *: suivi des patients ayant un plombage. l'évènement observé est la fracture du plombage ou une complication endodontique. L'examen ne peut se faire que chez le dentiste. Cette observation est donc censurée par intervalle. Certains patients gardent leurs couronnes toutes leur vie donc ces données seront censurées à droite si pas d'évènement.*
 
 ## Type de censure
 
@@ -96,39 +111,138 @@ On distingue les censure par la date d'origine de l'évènement, on distingue au
 
 1.  **La censure de type I** (fixée)\
     C'est la [censure administrative]{.underline}\
-    Soit $C$ une valeur fixée. Au lieu d'observer la variable $Y_i$ sur toute la durée, on n'observe uniquement $Y_i\leq C$. On utilise la notation $T_i = Y_i \wedge C = min(Y_i,C)$ (cas à droite) . Dans ce cas, la durée n'est pas observable au-delà (ou avant) d'une durée maximale fixée à l'avance et est identique à tous les individus. \
+    Soit $C$ une valeur fixée. Au lieu d'observer la variable $Y_i$ sur toute la durée, on n'observe uniquement $Y_i\leq C$. On utilise la notation $T_i = Y_i \wedge C = min(Y_i,C)$ (cas à droite) . Dans ce cas, la durée n'est pas observable au-delà (ou avant) d'une durée maximale fixée à l'avance et est identique à tous les individus.\
     [*Exemple*]{.underline} *: on étudie sur 5 ans l'apparition de cancers. Au bout de 5 ans, certains patients n'ont pas développé de cancers : ces données sont censurées de type I (fin de l'étude)*
 
 2.  **La censure de type II** (attente)\
-    Le protocole de collecte suppose d'observer les durées de vie de $n$ individus jusqu'à ce que $R$ individus aient vu l'évènement d'intérêt se produire. \
+    Le protocole de collecte suppose d'observer les durées de vie de $n$ individus jusqu'à ce que $R$ individus aient vu l'évènement d'intérêt se produire.\
     [*Exemple*]{.underline} *: les données* $Y_1\leq \dots \leq Y_R$ sont récupérées, toutes les observations entre $R$ et $n$ sont censurées de type II
 
-3.  **La censure de type III** (aléatoire) \
+3.  **La censure de type III** (aléatoire)\
     Il s'agit d'une information incomplète liée à un [évènement non fixé]{.underline} par le protocole de suivi. Cette censure arrive lors de la sortie de l'étude d'un sujet avant la fin de la période de suivi fixée par le protocole. *(exemple à droite)\
-    *À droite, les données disponibles sont les suivantes : $T_i = Y_i  \wedge C_i$, $\mathds{1}$ \
+    *À droite, les données disponibles sont les suivantes : $T_i = Y_i \wedge C_i$, $\mathds{1}$\
     [*Exemple*]{.underline} *: perte de vue, arrêt ou changement de traitement*
 
-## Exemple
+## Exemples
 
-# Motivation du travail
+### Exemple 1 : données de Freireich (1963)
+
+On observe la durée de rémission (en semaines) obtenue par des stéroïdes chez des patients atteints de leucémie aigüe, traités soit par placébo, soit par du 6-mercaptopurine (6-MP)
+
+![](images/clipboard-4086016186.png)
+
+Le signe $+$ correspond à des patients qui ont quitté l'étude à la date considérée. Pour ces individus, les durées sont donc censurée à droite. Dans cet exemple, le quatrième patients est perdu de vue au bout de 6 semaines de traitement avec le 6-MP. Sa durée de rémission est supérieure à 6 semaines.\
+Si on enlève cette donnée, on ne prend pas en compte les rémissions les plus longues $\Rightarrow$ sous évaluation de l'effet du 6-MP.
+
+### Exemple 2 : les données de Peto (1979)
+
+On observe les durées de survie de deux groupes de patients à qui l'on a administré deux types de traitements. (la fonction rénale influe sur la survie) N: normale, A: anormale
+
+![](images/clipboard-3576798470.png)
+
+Si on enlève les données censurées, on ne tient pas compte des patients qui ont justement les durées de survie les plus longues !
+
+## Complément
+
+On fera l'hypothèse dans ce résumé que la censure est indépendante de l'évènement : $Y_i$ indé de $C_i$.
+
+Pour justifier le principe de censure, on décide d'essayer d'enlever toutes les données censurées : on étudie donc la loi de $\{T,\delta=1\}$ . Pour la fonction de répartition des données non censurées, on a :
+
+$$
+\begin{align*}
+\mathbb{P}(T\leq t,\delta=1)&=\mathbb{E}[ \mathbb{1}_{Y\leq t,Y\leq C}]\\
+&=\int\int\mathbb{1}_{u\leq t,u\leq v}dF(u)dG(v)\\
+&= \int \mathbb{1}_{u\leq t}\left( \int \mathbb{1}_{u\leq v}dG(v)\right)dF(u)\\
+&=\int_0^t(1-G(u))dF(u)
+\end{align*}
+$$
+
+Avec $F$ la fonction de répartition de $Y$ et $G$ la fonction de répartition de $C$.
+
+Il est clair que : $\mathbb{P}[T\leq t,\delta=1]\neq \mathbb{P}[Y\leq t]=\int^t_0dF(u)$ . Sauf dans le cas où $G(u)=0$ et cela voudrait dire qu'il n'y a pas de censure !
+
+Puisuqe $1-G(u)\in[0,1]$, alors on peut même dire que $\mathbb{P}[T\leq t,\delta=1]\leq \mathbb{P}[Y\leq t]$ . De fait, en ne prenant que les données non censurées, on a tendance à **sous évaluer** la fonction de réparition de la variable d'intérêt.
+
+Voici un exemple pour comprendre cela voici un exemple numérique :
+
+```{r max.print=10}
+Y <- runif(100,0,5) # random values following U[0,1]
+C <- runif(100,0,4)
+T <- pmin(Y,C)
+Delta <- as.numeric(Y <= C)  # Convert logical to numeric
+
+# Create a data frame for better display
+data <- data.frame(Y=Y, C=C, T=T, Delta=Delta)
+
+data
+```
+
+```{r max.print=10}
+data
+```
+
+```{r}
+mean(T)
+mean(T[Delta==1])
+mean(Y)
+
+```
+
+# Troncature
+
+Les troncatures correspondent à des durées qui ne sont pas observées en dessous d'un certain seuil (troncature à gauche) ou au dessus d'un certain seuil (troncature à droite) qui peuvent être aléatoire.
+
+# Motivation d'un nouveau modèle
+
+Prenons un exmple afin de motiver l'étude spécifique de la survie :
+
+On se pose la question : Est-ce que le tabagisme réduit le temps d'apparition d'un décès ? Afin de répondre à cette question, on peut avoir l'idée de réaliser une régression linéaire, dont on rappelle la définition :
+
+$$
+\mathbb{E}[Y|x_1,x_2,\dots]=\beta_0+\beta_1x_1+\beta_2x_2+\dots
+$$
+
+où :
+
+-   $Y$ : variable aléatoire de temps avant l'évènement
+
+-   $x_1,x_2,\dots$ : variables explicatives d'intérêt
+
+-   $\beta_1,\beta_2,\dots$ : coefficients de régression
+
+Problème : Dans ce cas on ne fait pas de différence entre $T$ et $Y$ ! On observe $T$ mais pas $Y$ ! Aussi, nous n'expliquons pas la variable d'évènement $\delta$.
+
+On essaie alors de faire une régression logistique, dont on rappelle la définition :
+
+$$
+logit\left(\mathbb{P}(\delta=1|x_1,x_2,\dots) \right) =\beta_0+\beta_1x_1+\beta_2x_2+\dots 
+$$
+
+où :
+
+-   $\delta$ : variable aléatoire binaire à expliquer
+
+-   $x_1,x_2,\dots$ : variables explicatives d'intérêt
+
+-   $\beta_1,\beta_2,\dots$ : coefficients de régression
+
+On rappelle que $exp(\beta_1)$ représente l'ODD ratio du groupe $x_1=1$ par rapport au groupe $x_1=0$.
+
+Problème: une étude s'étalant dans la durée a plus de chance de donner $\delta=1$ . De plus, il y a un biais dans l'estimation des effets des variables explicatives qui sont également explicative du temps de suivi : on perd une information !
+
+Il y a donc besoin de créer un nouveau modèles.
 
 # Fonctions utiles
 
 ## Fonction de densité
 
-Soit $t\geq 0$ , le temps et $\mu \geq 0$ la durée moyenne de survie d'un individu. Un modèle simple régulièrement utilisé est le modèle de densité exponentielle :
+La fonction de densité de probabilité $f$ représente la limite de probabilité que l'évènement se produise "au temps $t$". Avec $Y$, la v.a continue positive qui représente le temps de survie d'un individu par exemple.
 
 $$
-f(t) = \frac{1}{\mu}e^{-\frac{1}{\mu}t}
+f(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<Y\leq t+\Delta t)}{\Delta t} = \frac{dF(t)}{dt}
 $$
 
-D'ailleurs :
-
-$$
-f(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t)}{\Delta t} = \frac{dF(t)}{dt}
-$$
-
-Avec $T$, la v.a continue positive qui représente le temps de survie d'un individu par exemple.
+[*Exemple*]{.underline} *: Soit* $t\geq 0$ *, le temps et* $\mu \geq 0$ *la durée moyenne de survie d'un individu. Un modèle simple régulièrement utilisé est le modèle de densité exponentielle :* $f(t)=\frac{1}{\mu}e^{-\frac{1}{\mu}t}$
 
 ::: {style="color:red;"}
 D'un point de vue du biologiste, la fonction $f$ de densité correspond à la proportion de décès entre $t$ et $\Delta t$ rapporté au nombre total d'individus à l'instant initial $t_0$.
@@ -136,50 +250,41 @@ D'un point de vue du biologiste, la fonction $f$ de densité correspond à la pr
 
 ## Fonction de répartition
 
-On a $F$ la fonction de répartition associée à la fonction de densité $f$.
-
-$$
+On a $F$ la fonction de répartition associée à la fonction de densité $f$ est la probabilité que l'évènement se produise avant $t$.$$
 \begin{align*}
-F(t) &= \mathbb{P}(T\leq t)\\
-F(t) &= \int_{-\infty}^t f(x)dx=\int_{-\infty}^0f(x)dx+\int_0^tf(x)dx=\int_0^tf(x)dx\\
-F(t) &=\int_0^t\frac{1}{\mu}e^{-\frac{1}{\mu}x}dx\\
-F(t) &= 1-e^{-\frac{1}{\mu}t}
+F(t) &= \mathbb{P}(Y\leq t) = 1-S(t) = \int_0^tf(x)dx\\
 \end{align*}
 $$
 
-*La deuxième étape n'est possible que parce que* $T$ *ne peut être que positive.*
+Valeurs remarquables : $F(0)=0$ , $F(\infty)=1$
 
-Rappel : pour une variable aléatoire continue positive comme le temps ou la durée de survie $T$, la fonction $F$ de répartition correspond à l'air sous la courbe de la fonction de densité.
+Rappel : pour une variable aléatoire continue positive comme le temps ou la durée de survie $T$, la fonction $F$ de répartition correspond à l'air sous la courbe de la fonction de densité. $F$ est strictement croissante.
+
+[*Exemple (suite)*]{.underline} *:* $F(t) =\int_0^t\frac{1}{\mu}e^{-\frac{1}{\mu}x}dx \Leftrightarrow F(t) = 1-e^{-\frac{1}{\mu}t}$
 
 ## Fonction de survie
 
-Soit $S$ la fonction de survie :
+Soit $S$ la fonction de survie, c'est la probabilité que l'évènement se produise après $t$ :
 
 $$
 \begin{align*}
-S(t) &= \mathbb{P}(T>t) = 1- \mathbb{P}(T<t) = 1 - F(t)\\
-S(t) &= 1-F(t) = 1-\left(1-e^{-\frac{1}{\mu}t}\right)\\
-S(t) &= e^{-\frac{1}{\mu}t}
+S(t) &= \mathbb{P}(Y>t) = 1- \mathbb{P}(Y<t) = 1 - F(t) = \int_t^\infty f(x)dx\\
 \end{align*}
 $$
 
-Remarque : $S(t) = \int_t^{+\infty} f(x) dx$, $S(0)=1$, $S(\infty)=0$
+Valeurs remarquables : $S(0)=1$, $S(\infty)=0$
 
-## Fonction de risque
+Remarque : $S$ est strictement décroissante
 
-Soit $h$ la fonction de risque :
+[*Exemple (suite)*]{.underline} *:* $S(t) = 1-F(t) = 1-\left(1-e^{-\frac{1}{\mu}t}\right)\Leftrightarrow S(t) = e^{-\frac{1}{\mu}t}$
 
-$$
-\begin{align*}
-h(t) &= \frac{f(t)}{S(t)} = \frac{\frac{1}{\mu}e^{-\frac{1}{\mu}t}}{e^{-\frac{1}{\mu}t}} = \frac{1}{\mu}
-\end{align*}
-$$
+## Fonction de risque (instantané)
 
-D'ailleurs :
-
-$$
+Soit $h$ la fonction de risque :$$
 h(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t | T>t)}{\Delta t}
 $$
+
+[*Exemple (suite)*]{.underline} *:* $h(t)=\frac{f(t)}{S(t)}=\frac{\frac{1}{\mu}e^{-\frac{1}{\mu}t}}{e^{\frac{1}{\mu}t}}=\frac{1}{\mu}$
 
 ::: {style="color:red;"}
 D'un point de vue du biologiste, la fonction $h$ de risque correspond au taux de mortalité instantané entre $t$ et $\Delta t$ sachant que le temps de survie $T$ est supérieur à $t$.
@@ -349,7 +454,7 @@ Ce vecteur représente la variable à expliquer : $Y$. On voit que:
 On résume ces observations dans le tableau suivant tableau :
 
 | $t_j$ | $n_j$                                                                               | $d_j$            | $q_j$ | $\hat{S}(t_j)$                                                                              |
-|---------------|------------------|---------------|---------------|---------------|
+|---------------|---------------|---------------|---------------|---------------|
 | 0     | $\color{blue}{10}$                                                                  | $\color{red}{0}$ | 0     | $\color{blue}{10}-\color{red}{0}/\color{blue}{10}=\color{green}{1}$                         |
 | 3     | $\color{blue}{n_{0}}-\color{red}{d_{0}}-q_{0} = \color{blue}{n_3}=\color{blue}{10}$ | $\color{red}{1}$ | 0     | $\color{green}{\hat{S}(t_0)}\times (\color{blue}{n_3}-\color{red}{d_3})=\color{green}{0.9}$ |
 | 6     | $\color{blue}{{n_3}}-\color{red}{d_{3}}-q_{3} = \color{blue}{n_6}=\color{blue}{9}$  | $\color{red}{2}$ | 1     | $\color{green}{\hat{S}(t_3)}\times (\color{blue}{n_6}-\color{red}{d_6})=\color{green}{0.7}$ |
