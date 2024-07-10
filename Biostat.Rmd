@@ -278,7 +278,7 @@ Remarque : $S$ est strictement décroissante
 
 [*Exemple (suite)*]{.underline} *:* $S(t) = 1-F(t) = 1-\left(1-e^{-\frac{1}{\mu}t}\right)\Leftrightarrow S(t) = e^{-\frac{1}{\mu}t}$
 
-## Fonction de risque (instantané)
+## Fonction de risque (instantané) {#fonction-de-risque-instantané}
 
 Soit $h$ la fonction de risque :$$
 h(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t | T>t)}{\Delta t}
@@ -454,7 +454,7 @@ Ce vecteur représente la variable à expliquer : $Y$. On voit que:
 On résume ces observations dans le tableau suivant tableau :
 
 | $t_j$ | $n_j$                                                                               | $d_j$            | $q_j$ | $\hat{S}(t_j)$                                                                              |
-|---------------|---------------|---------------|---------------|---------------|
+|----------|--------------------|----------|----------|-----------------------|
 | 0     | $\color{blue}{10}$                                                                  | $\color{red}{0}$ | 0     | $\color{blue}{10}-\color{red}{0}/\color{blue}{10}=\color{green}{1}$                         |
 | 3     | $\color{blue}{n_{0}}-\color{red}{d_{0}}-q_{0} = \color{blue}{n_3}=\color{blue}{10}$ | $\color{red}{1}$ | 0     | $\color{green}{\hat{S}(t_0)}\times (\color{blue}{n_3}-\color{red}{d_3})=\color{green}{0.9}$ |
 | 6     | $\color{blue}{{n_3}}-\color{red}{d_{3}}-q_{3} = \color{blue}{n_6}=\color{blue}{9}$  | $\color{red}{2}$ | 1     | $\color{green}{\hat{S}(t_3)}\times (\color{blue}{n_6}-\color{red}{d_6})=\color{green}{0.7}$ |
@@ -645,7 +645,7 @@ $$
 h(t,X_i) = h_0(t)e^{\beta_1X_1+\dots+\beta_kX_k}
 $$
 
-Où $h$ est le risque, $h_0$ est le risque de base, $t$ le temps, $X_i$ les variables explicatives ou prédictives et $\beta_i$ les coefficients de la régression.
+Où $h$ est le risque, $h_0$ est le risque de base, $t$ le temps, $X_i$ les variables explicatives ou prédictives et $\beta_i$ les coefficients de la régression (risque instantané relatif, taux relatif).
 
 On pose en général $\eta =\beta_1X_1+\dots+\beta_kX_k$ *(rmq : l'ordonnée à l'origine est incorporée dans le risque de base* $h_0$).
 
@@ -653,12 +653,14 @@ En analyse de survie, on modélise donc la fonction $h$ de risque qui dans le ca
 
 -   $h_0\geq 0$ : le risque de base qui est fonction uniquement du temps mais indépendant des variables explicatives
 
--   $e^\eta\geq 0$ : l'exponentiel du terme $\eta$ à modéliser qui est fonction des variables explicatives mais indépendant du temps
+-   $e^\eta\geq 0$ : le risque relatif, exponentiel du terme $\eta$ à modéliser qui est fonction des variables explicatives mais indépendant du temps
 
 ⚠️Attention, chaque variable explicative dans le modèle de **Cox** doit être [**indépendante du temps**]{.underline} *(sinon, passer au modèle de **Cox étendu**)* et [**non nulles**]{.underline} *(car quand toutes les variables explicatives sont nulles, alors le risque est égal au risque de base car* $e^0=1$*)*⚠️
 
+⚠️Une hypothèse forte du modèle de **Cox** est que les risques sont proportionnels. Il faut donc vérifier que cette hypothèse soit satisfaite. Pour chaque covariable, il faut tester si son effet est indépendant du temps⚠️ *(si ce n'est pas vérifié, on peut* [Stratification] *les covariables qui ne vérifient pas l'hypothèse)*
+
 ::: {style="color:red;"}
-Avec le modèle de **Cox** dit "semi paramétrique", il n'est pas nécessaire de spécifier le risque de base $h_0$ d'où sa grande popularité vis-à-vis des modèles purement paramétriques.
+Avec le modèle de **Cox** dit "semi paramétrique", il n'est pas nécessaire de spécifier le risque de base $h_0$ (elle est la même pour tous les individus à un instant donné) d'où sa grande popularité vis-à-vis des modèles purement paramétriques.
 :::
 
 ## Risque proportionnel
@@ -673,7 +675,7 @@ Le modèle de **Cox** repose sur la notion de [risques proportionnels]{.underlin
 
 ### Risque instantané, hazard rate
 
-Le risque instantané décrit la probabilité selon laquelle un évènement (décès, diagnostic, maladie, etc.) précis se produira à un instant fixé, une date précise.
+Le risque instantané décrit la probabilité selon laquelle un évènement (décès, diagnostic, maladie, etc.) précis se produira à un instant fixé, une date précise. [Fonction de risque (instantané)](#fonction-de-risque-instantané)
 
 ### Risque proportionnel HR ou hazard ration
 
@@ -698,6 +700,129 @@ $$
 -   $\beta_i >0 \Rightarrow HR>1$ : augmentation du risque global $h$ lié à la variable $X_i$
 
 -   $\beta_i < 0 \Rightarrow HR<1$ : diminution du risque global $h$ lié à la variable $X_i$
+
+## Estimation des paramètres
+
+La vraissemblance d'un modèle est la probabilité que le modèle ait pu générer les données observées. L'objectif est donc de trouver le maximum de cette vraissemblance. La vraissemblance étant souvent infinitésimale, on préfère souvent travailler avec son logarithme : la log-vraissemblance. Dans le cas du modèle de **Cox** on parle de vraissemblance partielle car seuls les sujets subissant lévènement étudiés entrent dans le calcul, les sujets censurés n'étant considérés qu'indirectement.
+
+## Méthodes
+
+En pratique, il peut y avoir des égalités entre les durées. Plusieurs méthodes peuvent alors être utilisées :
+
+-   Méthode **exacte** consièdre
+
+## Application en R
+
+On utilise le jeu de données ovarian :
+
+```{r}
+library(survival)
+#data(cancer, package="survival")
+#help(ovarian)
+str(ovarian)
+```
+
+Ces données mettent en évidence la survie chez 26 patientes atteintes d'un cancer de l'ovaire, on décrit les variables ci dessous :
+
+-   *futime* : temps de survenu de l'évènement (décès) en semaine
+
+-   *fustat* : statut (0= survie / 1 décès)
+
+-   *age* : âge des patientes en années
+
+-   *resid.ds* : présence résiduel de maladies (1 = non/ 2 = oui)
+
+-   *rx* : groupe de traitement (1 = placebo / 2 = traitement )
+
+-   *ecog.ps* : échelle de performance du patient (1 = moyenne / 2 faible)
+
+Notre objectif sera de tester l'effet du traitement tout en tenant compte de l'effet d'âge des patientes sur les durées de survie :
+
+-   M1 : *rx*
+
+-   M2 : *rx + age*
+
+-   M3 : *rx+age+rx:age*
+
+Préparons les données et observons les :
+
+```{r}
+ovarian$rx <- as.factor(ovarian$rx)
+ovarian$resid.ds <- as.factor(ovarian$resid.ds)
+ovarian$ecog.ps <- as.factor(ovarian$ecog.ps)
+str(ovarian)
+```
+
+```{r}
+
+# plot(survfit(Surv(ovarian$futime[ovarian$rx==1], ovarian$fustat[ovarian$rx==1])~1), 
+#      xlab=c("Temps (semaine)"),
+#      ylab=c("S(t)"),
+#      col = 'blue',
+#      conf.int = FALSE)
+# 
+# lines(survfit(Surv(ovarian$futime[ovarian$rx==2], ovarian$fustat[ovarian$rx==2])~1), 
+#      xlab=c("Temps (semaine)"),
+#      ylab=c("S(t)"),
+#      col = 'purple',
+#      conf.int = FALSE)
+
+# Explique la survie par le groupe de patient (placebo ou traitement)
+plot(survfit(Surv(ovarian$futime, ovarian$fustat)~ovarian$rx), 
+     xlab=c("Temps (semaine)"),
+     ylab=c("S(t)"),
+     col = c('red',"blue"),
+     lwd = c(1,2),
+     lty = 2:1,
+     conf.int = TRUE,
+     mark.time = TRUE,
+     main = "Courbes de survie des groupes de patients sous placébo et sous traitement")
+
+legend("topright", col = c('red',"blue"), lwd = c(1,2),lty = 2:1, c("Placebo","Traitement"), title="Groupes")
+```
+
+On utilise maintenant le fonction `coxph`
+
+```{r}
+#help(coxph)
+M1 <- coxph(Surv(ovarian$futime,ovarian$fustat)~ovarian$rx, method = "breslow")
+summary(M1)
+```
+
+À quoi correspondent toutes ces valeurs ?
+
+-   `coef / ovarian rx2 = -0.5964` correspond au coefficient $\beta_i$ , donc l'effet de `rx` sur le temps de survie
+
+-   `exp(coef) / ovarian rx2 = 0.5508` correspond au risque proportionnel de la variable
+
+-   `lower et upper .95 / ovarian rx2` correspond à l'intervalle de confiance à 95 % $e^{\beta_i \pm 1.96S(\beta_i)}$
+
+Ces données sont non significatives (p value \> 0.31). On peut néanmoins dire que l'effet du traitement diminue le risque $h$ de décès d'un facteur $e^{-0.6}=0.55$ soit un risque de décès dans le groupe placebo qui est $1/0.55=1.81$ fois supérieur à celui du groupe traitement.
+
+```{r}
+M2 <- coxph(Surv(ovarian$futime,ovarian$fustat)~ovarian$rx+ovarian$age, method = "breslow")
+summary(M2)
+```
+
+L'âge a un effet très significatif sur le risque $h$ de décès. Il augmente d'un facteur $1.16$ par année toute choses égales par ailleurs.
+
+```{r}
+M3 <- coxph(Surv(ovarian$futime,ovarian$fustat)~ovarian$rx+ovarian$age+ovarian$rx:ovarian$age, method = "breslow")
+summary(M3)
+```
+
+On compare les modèles avec une ANOVA
+
+```{r}
+anova(M1,M2,test = "Chisq") # le modèle 2 est bien meilleur !
+anova(M2,M3,test = "Chisq")
+```
+
+On garde le modèle M2 !
+
+## Stratification
+
+Consiste à calculer un modèle de **Cox** pour des valeurs différentes de risque de base $h_0(t)$. Tous les autres paramètres restent inchangés.
 
 # References
 
