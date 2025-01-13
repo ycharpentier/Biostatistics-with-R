@@ -1,0 +1,933 @@
+---
+title: "Analyse de survie"
+author: "Yoan Charpentier"
+date: "2024-06-30"
+output: 
+  bookdown::html_document2 :
+    code_folding: hide
+    theme: united
+    df_print: paged
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Attention :
+
+-   Ajout de dates pour interprétation (\~2/graphique).
+
+-   Comparer tout au long de l'étude sur le sexe
+
+-   Dans le modèle de cox : interpréter la concordance : test de wald significativité globale.
+
+-   1.4 pb notation
+
+-   Ajout d'un point théorique sur AIC BIC
+
+-   Ajout d'une inteprétation sur HR, augmentation de k unité, changement de exp(k\\beta pourcent)
+
+-   15 min de presentation
+
+# Analyse de données Insuffisance cardiaque
+
+## Introduction et motivation
+
+L'insuffisance cardiaque désigne un disfonctionnement du muscle cardiaque caractérisée par une perte: de sa force musculaire et de sa capacité de contraction normale. Cette **complication** touche essentiellement une population "âgée" (i.e \>75 ans), en effet, 10 à 20% d'entre eux en seraient touchés. Sans rentrer dans les détails, l'insuffisance cardiaque s'observe souvent par un essoufflement rapide à l'effort, une respiration courte et sifflante, de la toux et des palpitations cardiaques. Ces observations souligne la necessitée d'une compréhension statistiques de l'étiologie de l'insuffisance cardiaque.
+
+Ce rapport a donc pour objet l'analyse des données de patients atteint d'une insuffisance cardiaque. On s'appuie sur une base de données issue d'une étude de suivie (cohorte) de 299 patients atteints de d'insuffisance cardiaque.
+
+problématiques
+
+<https://www.santepubliquefrance.fr/maladies-et-traumatismes/maladies-cardiovasculaires-et-accident-vasculaire-cerebral/insuffisance-cardiaque/le-scan/#tabs>
+
+<https://www.vidal.fr/maladies/coeur-circulation-veines/insuffisance-cardiaque-chronique.html>
+
+## Analyse exploratoire, étude descriptive
+
+Le jeu de données observe 299 patients atteints d'une insuffisance cardiaque dans une étude de 285 jours. Sur ces patients on observe 12 covariables :
+
+-   L'âge du patient (quantitative ordinale)
+
+-   La présence d'une anémie (qualitative)
+
+-   La creatine phosphokynase : enzyme fabriquée notamment dans le coeur qui peut indiquer un signe de maladie du coeur (quantitative) <https://www.hopital.fr/Le-dico-medical/Les-termes-generiques/Creatine-phosphokinase>
+
+-   La présence de diabète (qualitative)
+
+-   La fraction d'ejection (quantitative ordinale) c'est la fraction de sang que le coeur peut ejecter en une contraction (+ c'est élevé, + c'est bien)\
+    <https://fr.wikipedia.org/wiki/Fraction_d%27%C3%A9jection>
+
+-   La présence d'une pression sanguine élevée (qualitative)
+
+-   Les plaquettes : quantité de plaquette par mm\^3 (quantitative) (la normale est entre 150 000 et 300000) <https://cancer.ca/fr/treatments/side-effects/low-platelet-count>
+
+Imports :
+
+```{r, imports, warning=FALSE, echo=FALSE, message=FALSE}
+library(survival)
+library(corrplot)
+library(MASS)
+library(latex2exp)
+library("dplyr")
+library(kableExtra)
+library("fitdistrplus")
+library(ggplot2)
+rm(list=ls())
+setwd("C:/Users/yoyoc/Desktop/5A/ADS")
+```
+
+Quelques pré traitement
+
+```{r}
+
+# Ouverture du df
+heart_df <- read.csv("heart_failure_clinical_records_dataset.csv")
+
+# Visualisation du df
+#View(heart_df)
+head(heart_df)
+
+# Quelques valeurs de base
+names(heart_df) # nom des variables
+str(heart_df)
+summary(heart_df)
+#attach(heart_df)
+
+# Prétraitement
+heart_df$sex = as.factor(heart_df$sex)
+heart_df$high_blood_pressure = as.factor(heart_df$high_blood_pressure)
+heart_df$anaemia = as.factor(heart_df$anaemia)
+heart_df$diabetes = as.factor(heart_df$diabetes)
+heart_df$smoking = as.factor(heart_df$smoking)
+
+str(heart_df)
+
+heart_df_num = select_if(heart_df, is.numeric)
+heart_df_covar = heart_df[,1:11]
+```
+
+Analyse univariée :
+
+```{r}
+# Corrélations éventuelles ?
+corrplot(cor(heart_df_num))
+
+# Quantité de données censurées 
+hist(heart_df$DEATH_EVENT)
+```
+
+## Prérequis mathématiques
+
+On aimerait, à partir des données présentées, estimer les chances de survie d'un individu après une durée $t$. Autrement dit, on souhaite estimer la probabilité que l'évènement (ici, le décès) survienne après un certain temps $t$. Définir ce concept necessite un rappel sur quelques fonctions d'analyses statistiques de bases.
+
+### Fonction de densité
+
+La fonction de densité de probabilité $f$ représente la limite de probabilité que l'évènement se produise "au temps $t$". Avec $Y$, la v.a continue positive qui représente le temps de survie d'un individu par exemple.
+
+$$ f(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<Y\leq t+\Delta t)}{\Delta t} $$
+
+[*Exemple*]{.underline} *: Soit* $t\geq 0$ *, le temps et* $\mu \geq 0$ *la durée moyenne de survie d'un individu. Un modèle simple régulièrement utilisé est le modèle de densité exponentielle :* $f(t)=\frac{1}{\mu}e^{-\frac{1}{\mu}t}$
+
+::: {style="color:red;"}
+D'un point de vue du biologiste, la fonction $f$ de densité correspond à la proportion de décès entre $t$ et $\Delta t$ rapporté au nombre total d'individus à l'instant initial $t_0$.
+:::
+
+### Fonction de répartition
+
+$F$ est la fonction de répartition associée à la fonction de densité $f$, c'est la probabilité que l'évènement se produise **avant** $t$.$$ \begin{align*} F(t) &= \mathbb{P}(Y\leq t) = 1-S(t) = \int_0^tf(x)dx\\ \end{align*} $$
+
+Valeurs remarquables : $F(0)=0$ , $F(\infty)=1$
+
+[Rappel]{.underline} : pour une variable aléatoire continue positive comme le temps ou la durée de survie $T$, la fonction $F$ de répartition correspond à l'air sous la courbe de la fonction de densité. $F$ est strictement croissante.
+
+[*Exemple (suite)*]{.underline} *:* $F(t) =\int_0^t\frac{1}{\mu}e^{-\frac{1}{\mu}x}dx \Leftrightarrow F(t) = 1-e^{-\frac{1}{\mu}t}$
+
+[Complément]{.underline} : la définition de la fonction de réparition apporte naturellement une nouvelle façon d'interpréter la fonction de densité. En effet : $f(t)=\frac{dF(t)}{dt}$ représente la probabilité que le risque se produise exactement au temps $t$.
+
+### Fonction de survie
+
+Soit $S$ la fonction de survie, c'est la probabilité que l'évènement se produise **après** $t$ :
+
+$$ \begin{align*} S(t) &= \mathbb{P}(Y>t) = 1- \mathbb{P}(Y<t) = 1 - F(t) = \int_t^\infty f(x)dx\\ \end{align*} $$
+
+Valeurs remarquables : $S(0)=1$, $S(\infty)=0$
+
+[Remarque]{.underline} : $S$ est strictement décroissante
+
+[*Exemple (suite)*]{.underline} *:* $S(t) = 1-F(t) = 1-\left(1-e^{-\frac{1}{\mu}t}\right)\Leftrightarrow S(t) = e^{-\frac{1}{\mu}t}$
+
+## Estimation de la fonction de survie
+
+En pratique, on estime la fonction de survie $S$ à partir des données. La formule de **Kaplan-Meier** pour le calcul de l'estimation de la fonction de survie $S$ :
+
+$n_i$ étant le nombre d'observations restantes non censurées (= nb de survivants) juste avant $t_i$. Et $d_i$ est le nombre d'évènements (=nb de décès) observés à l'instant $t_i$.
+
+Produit des probabilités de survie à chaque étape précédente, conditionnellement à la survie jusqu'à cette étape. Prendre en compte les probabilités de survie des étapes précédentes.
+
+$$ \begin{align*} \hat{S}(t_j)&=\frac{n_j-d_j}{n_j} \hat{S}(t_{j-1}) &\text{Proportion de survivants en $t_j$} \\ \hat{S}(t_j)&=\frac{n_j-d_j}{n_j} \prod_{i=1}^{j-1}\frac{n_i-d_i}{n_i}\\ \hat{S}(t_j)&=\prod_{i=1}^j\frac{n_i-d_i}{n_i} = \prod_{i=1}^j \mathbb{P}(T>t_j|T\geq t_j) \end{align*} $$
+
+### Estimateur de la variance
+
+L'estimateur de **Greenwood** permet d'estimer la variance de la fonction de survie $S$.
+
+$$ \hat{\sigma}\left(\hat{S}(t_j)\right) = \hat{S}(t_j)^2\sum_{i=1}^j\frac{d_i}{n_i(n_i-d_i)} $$
+
+### Intervalle de confiance
+
+$$
+IC_{95\%}\left(S(t_j)\right) = \hat{S}(t_j) \pm 1.96\times\hat{\sigma}\left(\hat{S}(t_j)\right)
+$$
+
+```{r}
+Y = Surv(heart_df$time, heart_df$DEATH_EVENT)
+fit1 <- survfit(Y~1,conf.type="plain", type=c("kaplan-meier"))
+#summary(fit1)
+
+plot(fit1,
+     col="blue",
+     lwd=2,
+     main='Estimation de Kaplan-Meier avec censure',
+     xlab = "t",
+     ylab = "S")
+
+grid(nx = NULL, ny = NA, lty = 3, col = "gray", lwd = 1)
+```
+
+Faisons quelques observations :
+
+1.  Comme prévu dans sa définition, on a une ordonnée à l'origine à 1. Cela, traduit que la survie au moment où l'étude commence est maximale (la cohorte ne contient que des patients vivants !)
+2.  La survie à 50 jours est d'environ 78%. Autrement dit, le probabilité que l'évènement d'intérêt (i.e. le décès) soit observé après le cinquentième jours est de 78%.
+3.  "Asymptotiquement", on observe une survie à 58%.
+
+On veut vérifier qu'il y a bien un intérêt a utiliser des données censurée. On observe ci-dessous les données de survie lorsqu'il n'y a pas de censure. Une méthode possible est de supposer que tous les évènements sont survenus. Dans ce cas, on s'attend logiquement à une courbe de survie qui tombe à 0 au au plus le dernier jour.
+
+```{r}
+# Modèle sans censure
+Y_no_cens <- Surv(heart_df$time, rep(1, nrow(heart_df)))  # Ici, on considère que tous les événements sont survenus
+fit_no_cens <- survfit(Y_no_cens ~ 1, conf.type="plain", type="kaplan-meier")
+#summary(fit_no_cens)
+plot(fit_no_cens,
+     col="red",
+     lwd=2,
+     main='Estimation de Kaplan-Meier sans censure',
+     xlab = "t",
+     ylab = "S")
+```
+
+L'hypothèse que nous avions prévu avant d'afficher l'estimateur de la fonction de survie sans la présence de censurese vérifie. En comparaison avec la survie censurée, on peut une fois de plus poser plusieurs hypothèses :
+
+-   Soit les courbes se confondent, ce qui laisserait penser que la censure est décorrélée de la mortalité
+
+-   Soit les courbes se confondent sur une période et se sépare
+
+-   Soit les deux courbes ne se confondent en aucun point
+
+```{r}
+# Comparaison des courbes avec et sans censure
+plot(fit1, col="blue", lwd=2, main='Estimation de Kaplan-Meier, avec et sans censure',
+     pch=11,
+     xlab="t",
+     ylab="S")
+
+lines(fit_no_cens, col="red", lwd=2)
+grid(nx = NULL, ny = NA, lty = 3, col = "gray", lwd = 1)
+legend("topright", legend=c("Avec censure", "Sans censure"), col=c("blue", "red"), lwd=2)
+```
+
+Comme on le voit la deuxième hypothèse semble ici s'observée. Jusqu'au 70 e jour environ, les courbes estiment de la même façon la survie. Après ce jour, une séparation de l'estimation. Cela s'explique assez simplement. En effet sur la courbe avec censure, c'est à peu près à ce jour là qu'aparaît des plateaux, on censure alors rarement pour cause d'un évènement observé. De fait, comme la courbe sans censure suppose que tous les individus observeront l'évènement, alors l'estimation change complètement.
+
+La courbe avec censure donne une estimation plus juste et plus réaliste des probabilités de survie, car elle considère que certains patients n'ont pas encore subi l'événement (décès) à la fin de la période d'observation. Elle montre la probabilité de survie réelle, en tenant compte des patients toujours en vie mais non suivis jusqu'au bout. La courbe sans censure représente un scénario extrême où tous les patients finissent par subir l'événement, ce qui est généralement irréaliste.
+
+## Survie avec covariable, un exemple
+
+```{r}
+# Second Kaplan Meier (avec filtre)
+t1 <- heart_df$time[heart_df$high_blood_pressure==1]
+e1 <- heart_df$DEATH_EVENT[heart_df$high_blood_pressure==1]
+Y1 <- Surv(t1,e1)
+
+t2 <- heart_df$time[heart_df$high_blood_pressure==0]
+e2 <- heart_df$DEATH_EVENT[heart_df$high_blood_pressure==0]
+Y2 <- Surv(t2,e2)
+
+plot(survfit(Y1~1), col="blue", main="Estimation Kaplan de la fonction de survie des patients\n atteint d'une insuffisance cardiaque des fumeur et non fumeurs.")
+lines(survfit(Y2~1),col="red")
+legend(0,0.2,legend=c("hbp", "pas hbp"), col=c("blue", "red"),
+       lty=c(1,1), cex = 0.7)
+```
+
+On fait des tests pour vérifier si les fonctions de survies sont bien différents :
+
+On effectue deux tests afin de croiser des résultats, tout d'abord avec le test du log-rank :
+
+[lien](https://pdf.sciencedirectassets.com/276884/1-s2.0-S0761842505X76471/1-s2.0-S076184250585644X/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEG8aCXVzLWVhc3QtMSJHMEUCIDusE7LJuDhHvwqsAzk3bJYcT22tyAb8MiG6PJ74DvDnAiEAx3WVGI6DBRwiyOTZhXtUMtPp44lUFs0TAnh5BZMCtdMqswUIWBAFGgwwNTkwMDM1NDY4NjUiDI0LdWNFjkV4QuoUriqQBZQGckydIUg3KanB8LAaaskK%2FoDphxp8GB005HAmezHk4ALC73IM77KJPOoOoymurIBpbUVO3u1dWebgY%2FIV%2BfuiFbBSxFNRYq08ifhV%2FzuxuHlO0BWTZRdusZ7OBomiuJzY%2FsHIlK7ccSU8HDk7bo8PD3fepunFNDIADrbcYnk2f%2FceWjG12q8mCyyirlmYKqzQKedI8JOenZHjQW4RyyB%2Bpl1BHfdZZtrIsaMeT8668baI5opHwhfyBqHehn3rLEPJ681gJklZGJ6CiuTCIC82LYi0u1cVt92VjqyOYVYqd2eWJ4GN%2FuOuT5h2xTATt31AVWur7Zh%2FX5MFg7BCjMB4UqoS68ddgWOmfKiPUI9dvw9YWUVA1kmeD%2B4wVbgTaBoPTHyJ4xen0X6Ebdkq9y64kP%2FPZH1FOY7ZyTleoYqNhQoXwh5iEjaUbIuedDgwfuCAcLfCogC%2FPQRo93FJfC9xrMxqtXJooyWKi%2F5D1trZguzB8gX4PevfwEntjQ90g8JAaHM9eUBcbaLUEU0vMWHnRr%2F6Oiz5YsUi09jTbpaHM1ZoYXyuifdUsJXoC3nXbGXU3oa0zvQbypbF0uSJdVttZH0Ot0Py4lbNiY2u0ISh7dpYV4achHNSWc0kTvYto7ZNBXzKNLYDlOqr0S9SHxhahnFJHg81MXlItlDHn03e5%2Flhiat8ZV58d%2FiqQ8qF6H94oNkJdo6%2F%2BoYOaadQ9ibDe%2BnCHKMJwsCGDVUYtWXSSIF3cy1XnaeT58U1LBsESecZIeOUb3ydiTLI1Hc5q4%2FfHBDSwA18Q3SWijUO%2BhZGgjzc70z1Ykr7Z2bfLQq0ZeokWo9OQlB4STRPLyGZcDcHzKdElQRm2%2FqUXevYlqrVMK6Q87sGOrEBgH2jS2qTDD7qzGpKNHcN%2FxABmhhVKsYr5tZQjNR3q305Qm5VoLsDxgZFLLP4RE3ZZ3NZwWPW2nbLBBF%2Bp5H1u%2BZepctfBu5zNKwB3o7AkduZ4YaPRfS44E5jl9%2B8WPryIJYa9cxdObYTEUNaGF9j7FfG3MJ%2BwGIoYm55evS6m14IbvQXJMBfv4Yg4y7leh7u%2Fjz60DoLLPuu7Z3QzkTw90eY8wHCdIgYVAWaPRetlwPB&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250107T071936Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYU5JH44OH%2F20250107%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=2ccc2cd330135a5b1e3e256f7ec66d08bb29e66ad3ba93d0051804d699e793fc&hash=602b3ab502d12578665150d5a21e035c452fd1f6691d8ab305f128a3159c790f&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S076184250585644X&tid=spdf-3c564e5e-b605-4bc4-9440-c2e46761f6cd&sid=21e7d87988dfc84fe9397d21a389536720d6gxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=051d5900005350065d&rr=8fe22e33db760358&cc=fr)
+
+$$H_0 : S_A(t) \approx S_B(t)$$
+
+-   **Test du log rank** : Sa statistiques de test est donnée par :\
+    $$\chi^2 = \frac{(O_A-E_A)^2}{E_A} + \frac{(O_B-E_B)^2}{E_B}$$\
+    où sur les deux groupes $A$ et $B$, on note les décès observés $O$, le nombre de décès attendu $E_{X_i}$
+
+-   **Test de Gehan Wilcoxon :\
+    **La statistique est basée sur les rangs pondérés des temps de survie. Les contributions des décès observés $O$ et des décès attendus $E$ sont pondérées pour privilégier les événements précoces\
+    $$U = \sum _{i\in A}W_i- \sum _{j\in B}W_j$$\
+    \$W_i\$ : poids attribué à chaque individu, généralement égal au nombre de personnes encore en risque (i.e., non censurées et vivantes) au moment de l'événement,
+
+    Les décès observés sont pris en compte avec un poids, et les décès attendus sont calculés de manière similaire mais en tenant compte des poids.
+
+    -   Ce test attribue un poids plus élevé aux événements survenant **tôt dans le suivi**.
+
+    -   Il est donc plus sensible aux différences précoces entre les courbes de survie.
+
+```{r}
+survdiff(Y~high_blood_pressure,data=heart_df,rho=0)#Test du log-rank
+survdiff(Y~high_blood_pressure,data=heart_df,rho=1)#Gehan-wilcoxon
+# p<0.05 <=> Les distributions sont vraiment différentes
+```
+
+::: {style="color:green;"}
+INTERPRETATION
+:::
+
+## Estimation de la fonction de risque
+
+Soit $h$ la fonction de risque :$$ h(t) = lim_{\Delta t\rightarrow 0} \frac{\mathbb{P}(t<T\leq t+\Delta t | T>t)}{\Delta t} $$
+
+[*Exemple (suite)*]{.underline} *:* $h(t)=\frac{f(t)}{S(t)}=\frac{\frac{1}{\mu}e^{-\frac{1}{\mu}t}}{e^{\frac{1}{\mu}t}}=\frac{1}{\mu}$
+
+::: {style="color:red;"}
+D'un point de vue du biologiste, la fonction $h$ de risque correspond au taux de mortalité instantané entre $t$ et $\Delta t$ sachant que le temps de survie $T$ est supérieur à $t$.
+:::
+
+On sait que la fonction $h$ de risque admet comme égalité :
+
+$$ \begin{align*} h(t) &= \frac{f(t)}{S(t)} = \frac{\frac{dF(t)}{dt}}{S(t)} = \frac{\frac{d(1-S(t))}{dt}}{S(t)} = - \frac{1}{S(t)}\frac{dS(t)}{dt}\\ &\Leftrightarrow h(t)dt = - \frac{dS(t)}{S(t)} \\ &\Leftrightarrow \int_0^th(x)dx=-\int_0^t \frac{dS(x)}{S(x)} dx\\ &\Leftrightarrow H(t) = - [ ln(S(t))-ln(S(0))] &\text{$H$ est la fonction de risque cumulé}\\ &\Leftrightarrow \color{red}{H(t) = -ln(S(t))}\\ &\Leftrightarrow \color{red}{S(t) = e^{-\int_0^th(x)dx}} \end{align*}\\ $$Ces différentes équivalences permettent de définir quelques grandeurs utiles.
+
+Le **risque cumulé** est défini comme la somme continue des risques instantanés. D'où :
+
+$$
+H(t) = \int^t_0h(x)dx
+$$
+
+Le risque cumulé peut être estimé à partir de de la fonction de la fonction de survie. On est alors bien tenté de d'estimer cette grandeur à partir de l'estimateur de Kaplan-Meier. Cette méthode est bien connu, c'est l'**estimateur de Breslow** défini ci-dessous :
+
+$$H(t)=-\log(S(t))$$ On continue de justifier que la censure est necessaire en comparant les estimations de risques cumulé et instantané avec et sans censure.
+
+```{r}
+# Estimation de la fonction de risque cumulé avec Breslow
+H <- -log(fit1$surv)
+H_without_censor <- -log(fit_no_cens$surv)
+
+# Tracé des deux courbes avec des paliers
+plot(H, col = 'blue',  type ="s", lwd =1,
+     main = TeX(r'($\hat{H}_{Breslow}$ avec et sans censure)'),
+     xlab = TeX(r'($t$)'), 
+     ylab = TeX(r'($\hat{H}(t)$)')
+)
+
+# Ajouter ligne sans censure
+lines(H_without_censor, col = 'red', lwd = 1, lty = 1)  # Ligne pour sans censures
+
+# Ajouter une légende
+legend("bottomright", legend = c("Avec censures", "Sans censures"),
+       col = c("blue", "red"), lwd = 1, lty = c(1, 1))
+
+```
+
+Il existe également un autre estimateur, Nelson-Aalen:
+
+$$
+\hat{\Lambda}(t)=\sum_{t_i\leq t} \frac{n_i}{\delta_i}
+$$
+
+où :
+
+-   $t_i$​ sont les temps d'événements observés,
+
+-   $\delta_i$ est un indicateur indiquant si un événement s'est produit (1 si l'événement s'est produit, 0 sinon),
+
+-   $n_i$ est le nombre de sujets à risque juste avant $t_i$​.
+
+```{r}
+naest <- cumsum(fit1$n.event/fit1$n.risk)
+
+naest_no_censor <- cumsum(fit_no_cens$n.event/fit_no_cens$n.risk)
+
+
+# Tracé des deux courbes
+plot(fit1$time, naest, type = "s", pch = 1, col = 'blue',
+     main = TeX(r'($\hat{H}_{Nelson-Aalen}$ avec et sans censure)'),
+     xlab = TeX(r'($t$)'),  
+     ylab = TeX(r'($\hat{H}(t)$)')
+)
+
+# Ajouter les points et lignes pour sans censures
+lines(fit_no_cens$time, naest_no_censor, pch = 2, col = 'red') 
+
+# Ajouter une légende
+legend("bottomright", legend = c("Avec censures", "Sans censures"),
+       col = c("blue", "red"), lty = c(1, 1))
+```
+
+```{r}
+plot(fit1$time, -log(fit1$surv), type = "s", pch = 1, col = 'blue',
+     main = TeX(r'($\hat{H}$ avec Breslow et Nelson-Aalen, avec et sans censure)'),
+     xlab = TeX(r'($t$)'),  
+     ylab = TeX(r'($\hat{H}(t)$)')
+)
+
+# Ajouter les lignes et points pour Breslow sans censures
+lines(fit_no_cens$time, -log(fit_no_cens$surv), pch = 2, col = 'red')
+
+# Ajouter les lignes et points pour Nelson-Aalen avec censures
+lines(fit1$time, naest, pch = 3, col = 'green')
+
+# Ajouter les lignes et points pour Nelson-Aalen sans censures
+lines(fit_no_cens$time, naest_no_censor, pch = 4, col = 'purple')
+
+# Ajouter une légende pour distinguer les courbes
+legend("bottomright", legend = c("Breslow avec censures", "Breslow sans censures", 
+                              "Nelson-Aalen avec censures", "Nelson-Aalen sans censures"),
+       col = c("blue", "red", "green", "purple"),
+       lty = c(1, 1, 1, 1))
+```
+
+On estime également le risque instantané.
+
+```{r}
+naest <- fit1$n.event/fit1$n.risk
+
+naest_no_censor <- fit_no_cens$n.event/fit_no_cens$n.risk
+
+
+# Tracé des deux courbes
+plot(fit1$time, naest, type = "s", pch = 1, col = 'blue',
+     main = TeX(r'($\hat{h}_{Nelson-Aalen}$ avec et sans censure)'),
+     xlab = TeX(r'($t$)'),  
+     ylab = TeX(r'($\hat{h}(t)$)')
+)
+
+# Ajouter les points et lignes pour sans censures
+lines(fit_no_cens$time, naest_no_censor, pch = 2, col = 'red') 
+
+# Ajouter une légende
+legend("bottomright", legend = c("Avec censures", "Sans censures"),
+       col = c("blue", "red"), lty = c(1, 1))
+```
+
+Il est normal d'observer des pics. En effet, comme la fonction de risque cumulée est une fonction dite "en escalier", alors la fonction de risque instantanée est nulle "la plupart" du temps et lorsqu'un évènement survient le risque instantannée augmente ponctuellement.
+
+## Tests de conformité
+
+On cherche à présent à trouver une densité standard permettant d'approcher au mieux la fonction la fonction de survie.
+
+### Loi Gamma
+
+La loi gamma est la distribution continue définie par les paramètres $\alpha > 0$ ( forme) et $\beta > 0$ (échelle). La fonction de densité est donnée par :
+
+$$
+f(x; \alpha, \beta) =
+\begin{cases}
+\frac{\beta^\alpha}{\Gamma(\alpha)} x^{\alpha-1} e^{-\beta x}, & \text{si } x > 0, \\
+0, & \text{si } x \leq 0,
+\end{cases}
+$$
+
+où $\Gamma(\alpha)$ est la fonction gamma définie par :
+
+$$
+\Gamma(\alpha) = \int_0^\infty t^{\alpha-1} e^{-t} \, dt.
+$$
+
+La moyenne de la loi gamma est donnée par $\mu = \frac{\alpha}{\beta}$ et sa variance par $\sigma^2 = \frac{\alpha}{\beta^2}$.
+
+```{r}
+g <- fitdist(fit1$surv,"gamma")
+denscomp(g, addlegend=TRUE)
+summary(g)
+plot(g, demp=TRUE,histo = TRUE)
+```
+
+### Loi de Weibull
+
+La loi de Weibull est une distribution continue définie par les paramètres $\lambda > 0$ (échelle) et $k > 0$ (forme). La fonction de densité est donnée par :
+
+$$
+f(x; \lambda, k) =
+\begin{cases}
+\frac{k}{\lambda} \left( \frac{x}{\lambda} \right)^{k-1} e^{-\left( \frac{x}{\lambda} \right)^k}, & \text{si } x \geq 0, \\
+0, & \text{si } x < 0.
+\end{cases}
+$$
+
+La fonction de répartition est donnée par :
+
+$$
+F(x; \lambda, k) =
+\begin{cases}
+1 - e^{-\left( \frac{x}{\lambda} \right)^k}, & \text{si } x \geq 0, \\
+0, & \text{si } x < 0.
+\end{cases}
+$$
+
+D'espérence $\mathbb{E}[X] = \lambda \Gamma\left(1 + \frac{1}{k}\right)$ et de variance$\text{Var}(X) = \lambda^2 \left[ \Gamma\left(1 + \frac{2} {k}\right) - \Gamma^2\left(1 + \frac{1}{k}\right) \right]$
+
+```{r}
+w <- fitdist(fit1$surv,'weibull')
+
+summary(w)
+plot(w, demp=TRUE, histo = TRUE)
+```
+
+### Loi beta
+
+La loi Beta est une distribution continue définie sur l'intervalle $[0, 1]$, avec deux paramètres $\alpha > 0$ et $\beta > 0$. La fonction de densité est donnée par :
+
+$$
+f(x; \alpha, \beta) =
+\begin{cases}
+\frac{x^{\alpha-1} (1-x)^{\beta-1}}{B(\alpha, \beta)}, & \text{si } 0 \leq x \leq 1, \\
+0, & \text{sinon},
+\end{cases}
+$$
+
+où $B(\alpha, \beta)$ est la fonction Beta, définie par :
+
+$$
+B(\alpha, \beta) = \int_0^1 t^{\alpha-1} (1-t)^{\beta-1} \, dt = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha + \beta)},
+$$
+
+D'espérence : $\mathbb{E}[X] = \frac{\alpha}{\alpha + \beta}$, et de variance $\text{Var}(X) = \frac{\alpha\beta}{(\alpha + \beta)^2 (\alpha + \beta + 1)}$.
+
+```{r}
+b <- fitdist(fit1$surv,"beta")
+
+summary(b)
+plot(b, demp=TRUE, histo = TRUE)
+```
+
+### Loi exponentielle
+
+La loi exponentielle est une distribution continue définie par un paramètre $\lambda > 0$, qui représente le taux d'événements. La fonction de densité donnée par :
+
+$$
+f(x; \lambda) =
+\begin{cases}
+\lambda e^{-\lambda x}, & \text{si } x \geq 0, \\
+0, & \text{si } x < 0.
+\end{cases}
+$$
+
+La fonction de répartition est donnée par :
+
+$$
+F(x; \lambda) =
+\begin{cases}
+1 - e^{-\lambda x}, & \text{si } x \geq 0, \\
+0, & \text{si } x < 0.
+\end{cases}
+$$
+
+D'espérence $\mathbb{E}[X] = \frac{1}{\lambda}$ et de variance $\text{Var}(X) = \frac{1}{\lambda^2}$.
+
+```{r}
+e <- fitdist(fit1$surv,"exp")
+
+summary(e)
+plot(e, demp=TRUE, histo = TRUE)
+```
+
+### Loi normale
+
+```{r}
+n <- fitdist(fit1$surv,"norm")
+
+summary(n)
+plot(n, demp=TRUE, histo = TRUE)
+```
+
+### Loi lognormale
+
+```{r}
+ln <- fitdist(fit1$surv,"lnorm")
+
+summary(ln)
+plot(ln, demp=TRUE, histo = TRUE)
+```
+
+### Synthèse
+
+```{r}
+liste = list(ln, w,b,n,g)
+cdfcomp(liste, legendtext=c("lognormal", "weibull", "beta", "normal", "gamma"))
+denscomp(liste, legendtext=c("lognormal", "weibull", "beta","normal", "gamma"))
+qqcomp(liste, legendtext=c("lognormal", "weibull", "beta","normal", "gamma"))
+ppcomp(liste, legendtext=c("lognormal", "weibull", "beta","normal", "gamma"))
+
+synthese <- gofstat(liste)
+
+```
+
+On test donc la conformité des lois précédentes avec l'estimation de la fonction de survie avec différents tests. En pratique, l'hypothèse a testé est toujours la même ! En revanche, c'est bien la statistique de test, i.e. la façon dont va être calculé la distance entre les fonctions de répartitions.
+
+$$
+H_0: \text{"La fonction de survie a pour fonction de réparition}\ F_0 "
+$$
+
+**Kolmogorov Smirnov :** Derrière ce test, on prend la distance maximale entre la fonction de répartition entre les deux lois $\sup_x |F_n(x)-F(x)|$.
+
+Pour les deux prochains tests, on utilisera la distance suivante :
+
+$$
+n\int_{-\infty}^{+\infty} \left(F_n(x)-F(x)\right)^2w(x)dF(x)
+$$
+
+où $n$ est le nombre d'observations, et $w(x)$, une fonction de poids. Seul le poid sera changé
+
+**Test de Anderson-Darling :** derrière ce test, on prend une fonction de poid égale à $[F(x)(1-F(x))]^{-1}$ . Cela permet de mettre plus de poids sur les observations sur les queues de distributions.
+
+$$ n\int_{-\infty}^{+\infty} \frac{\left(F_n(x)-F(x)\right)}{F(x)(1-F(x))} ^2dF(x) $$
+
+**Test de CVM :** Derrière ce test, on prend une fonction de poid constante égale à 1:
+
+$$
+n\int_{-\infty}^{+\infty} \left(F_n(x)-F(x)\right)^2dF(x)
+$$
+
+On réalise également un test du **Khi\^2** définit par :
+
+$$
+H_0: \text{"les deux échantillons proviennent de deux variables aléatoires suivant la même loi}"
+$$
+
+Sa statistique de test est :
+
+::: {style="color:green;"}
+AJOUT DE STAT DE TEST
+:::
+
+```{r}
+gof_df <- data.frame(
+  Distribution = c("lognormal", "weibull", "beta","normal", "gamma"), 
+  AIC = synthese$aic,                   # Critère AIC
+  BIC = synthese$bic,                   # Critère BIC
+  AD = synthese$ad,
+  KS = synthese$ks,
+  CVM = synthese$cvm,
+  chisq = synthese$chisq,               # Test du chi-carré
+  chisq_pvalue = synthese$chisqpvalue   # Valeur p du chi-carré
+)
+
+gof_df <- gof_df %>%
+  mutate(
+    AIC = round(AIC, 1),
+    BIC = round(BIC, 1),
+    AD = round(AD, 2),
+    KS = round(KS, 2),
+    CVM = round(CVM, 2),
+    chisq = round(chisq, 2),
+    chisq_pvalue = round(chisq_pvalue, 5)
+  )
+
+
+
+gof_df %>%
+  kable(
+    format = "html",
+    caption = "Goodness-of-Fit Table: Résumé des critères pour chaque distribution",
+    col.names = c(
+      "Distribution", "AIC", "BIC", "Anderson-Darling (AD)",
+      "Kolmogorov-Smirnov (KS)", "CVM", "Chi-squared", "P-value"
+    ),
+    align = c("l", "c", "c","c", "c", "c", "c", "c") 
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#0073C2") %>% 
+  column_spec(1, bold = TRUE, color = "black") 
+```
+
+Chi-squared : toutes les p values sont \< 0.05 donc on rejette H0 \<=\> les échantillons proviennent de deux lois différentes. Beta, weibull : on est sûr. Normal : moins sûr. log normal et gamma : pas sûr du tout (on ne peux pas rejetter H0).
+
+```{r}
+print(synthese$kstest)
+
+print(synthese$cvmtest)
+
+print(synthese$adtest)
+```
+
+<https://github.com/cran/fitdistrplus/blob/209b492bd5642387b960bf62b4219e35f7833d47/R/gofstat.R#L284>
+
+For data sets with more than 5 observations and for distributions for which the test is described by Stephens (1986) for maximum likelihood estimations (`"exp"`, `"cauchy"`, `"gamma"` and `"weibull"`), the Cramer-von Mises and Anderson-darling tests are performed as described by Stephens (1986). Those tests take into account the fact that the parameters are not known but estimated from the data by maximum likelihood. The result is the decision to reject or not the distribution at the significance level 0.05. Those tests are available only for maximum likelihood estimations.
+
+not computed pour cette raison
+
+```{r}
+adtest = 0
+synthese <- gofstat(ln)
+
+ad = synthese$ad
+distname = "lnorm"
+n = ln$n
+
+if ((distname == "norm" | distname == "lnorm") & n>=5) {
+  a2mod <- ad*(1+0.75/n+2.25/n^2)
+  adtest <- ifelse(a2mod>0.752,"rejected","not rejected")
+} 
+
+print(adtest)
+```
+
+```{r}
+distname = "lnorm"
+cvmtest = 0
+
+cvm = synthese$cvm
+distname = "lnorm"
+n = ln$n
+
+
+if ((distname == "norm" | distname == "lnorm") & n>=5) {
+  w2mod <- cvm*(1+0.5/n)
+  cvmtest <- ifelse(w2mod>0.126,"rejected","not rejected")
+} 
+
+print(cvmtest)
+```
+
+## Étude en présence de covariable
+
+### Motivation d'un nouveau modèle
+
+Prenons un exmple afin de motiver l'étude spécifique de la survie :
+
+On se pose la question : Est-ce que le tabagisme réduit le temps d'apparition d'un décès ? Afin de répondre à cette question, on peut avoir l'idée de réaliser une régression linéaire, dont on rappelle la définition :
+
+$$ \mathbb{E}[Y|x_1,x_2,\dots]=\beta_0+\beta_1x_1+\beta_2x_2+\dots $$
+
+où :
+
+-   $Y$ : variable aléatoire de temps avant l'évènement
+
+-   $x_1,x_2,\dots$ : variables explicatives d'intérêt
+
+-   $\beta_1,\beta_2,\dots$ : coefficients de régression
+
+Problème : Dans ce cas on ne fait pas de différence entre $T$ et $Y$ ! On observe $T$ mais pas $Y$ ! Aussi, nous n'expliquons pas la variable d'évènement $\delta$.
+
+On essaie alors de faire une régression logistique, dont on rappelle la définition :
+
+$$ logit\left(\mathbb{P}(\delta=1|x_1,x_2,\dots) \right) =\beta_0+\beta_1x_1+\beta_2x_2+\dots  $$
+
+où :
+
+-   $\delta$ : variable aléatoire binaire à expliquer
+
+-   $x_1,x_2,\dots$ : variables explicatives d'intérêt
+
+-   $\beta_1,\beta_2,\dots$ : coefficients de régression
+
+On rappelle que $exp(\beta_1)$ représente l'ODD ratio du groupe $x_1=1$ par rapport au groupe $x_1=0$.
+
+Problème: une étude s'étalant dans la durée a plus de chance de donner $\delta=1$ . De plus, il y a un biais dans l'estimation des effets des variables explicatives qui sont également explicative du temps de suivi : on perd une information !
+
+Il y a donc besoin de créer un nouveau modèles.
+
+### Ecriture du modèle de Cox
+
+Lorsque la variable $X_i$ est catégorielle
+
+La forme générale continu du modèle de **Cox** est la suivante :
+
+$$ h(t,X_i) = h_0(t)e^{\beta_1X_1+\dots+\beta_kX_k} $$
+
+Où $h$ est le risque, $h_0$ est le risque de base, $t$ le temps, $X_i$ les variables explicatives ou prédictives et $\beta_i$ les coefficients de la régression (risque instantané relatif, taux relatif). On remarque immédiatement que c'est un modèle dit log-linéaire :
+
+$$
+\log(h(t,X_i)) = \log(h_0(t)) + \beta_1X_1+\dots+\beta_kX_k
+$$
+
+On pose en général $\eta =\beta_1X_1+\dots+\beta_kX_k$ *(rmq : l'ordonnée à l'origine est incorporée dans le risque de base* $h_0$).
+
+En analyse de survie, on modélise donc la fonction $h$ de risque qui dans le cas du modèle de **Cox** correspond au produit de deux quantités :
+
+-   $h_0\geq 0$ : le risque de base qui est fonction uniquement du temps mais indépendant des variables explicatives
+
+-   $e^\eta\geq 0$ : le risque relatif, exponentiel du terme $\eta$ à modéliser qui est fonction des variables explicatives mais indépendant du temps
+
+⚠️Attention, chaque variable explicative dans le modèle de **Cox** doit être [**indépendante du temps**]{.underline} *(sinon, passer au modèle de **Cox étendu**)* et [**non nulles**]{.underline} *(car quand toutes les variables explicatives sont nulles, alors le risque est égal au risque de base car* $e^0=1$*)*⚠️
+
+⚠️Une hypothèse forte du modèle de **Cox** est que les risques sont proportionnels. Il faut donc vérifier que cette hypothèse soit satisfaite. Pour chaque covariable, il faut tester si son effet est indépendant du temps⚠️ *(si ce n'est pas vérifié, on peut* [Stratification] *les covariables qui ne vérifient pas l'hypothèse)*
+
+::: {style="color:red;"}
+Avec le modèle de **Cox** dit "semi paramétrique", il n'est pas nécessaire de spécifier le risque de base $h_0$ (elle est la même pour tous les individus à un instant donné) d'où sa grande popularité vis-à-vis des modèles purement paramétriques.
+:::
+
+### Risque proportionnel
+
+Le modèle de **Cox** repose sur la notion de [risques proportionnels]{.underline} :
+
+-   Si le test du **log-rank** permet de tester une différence significative de survie entre deux groupes par exemple, il n'est pas possible d'estimer l'étendu de l'impact de cette différence entre ces deux groupes
+
+-   Afin de quantitifer cet impact, on fait appel au [risque instantané]{.underline} de décès de chacun des deux groupes et nous recherchons une fonction simple les reliant
+
+-   Pour y arriver, nous nous basons sur une hypothèse essentielle : nous supposons que la proportion des risques instantanés de décès est constante pendant toute la durée de l'observation, d'où l'expression de ["risque proportionnels"]{.underline}
+
+### Risque proportionnel HR ou hazard ration
+
+Le risque proportionnel (HR) pour une variable $X_i$ est le rapport de deux risques instantanés pour un changement d'une unité (ou catégorie) de $X_i$ tout en maintenant les autres variables $X_{j\neq i}$. Exemple dans le cas où la variable $X_1$ a deux modalités et univarié :
+
+$$ \begin{align*} h(t,X=1)&=h_0(t)\times e^{\beta\times 1}\\ h(t,X=2)&=h_0(t)\times e^{\beta\times 2 }\\ HR &= \frac{h_0(t)\times e^{\beta  \times 1}}{h_0(t)\times e^{\beta_1\times 2 }} = e^{\beta\times(2-1)} = e^{\beta} \end{align*} $$
+
+Dans le cas multivarié :
+
+$$ \begin{align*} h(t,X_1=1,X_{j\neq i} = cste)&=h_0(t)\times e^{\beta_1\times 1+ \dots + \beta_kX_k}\\ h(t,X_1=2,X_{j\neq i} = cste)&=h_0(t)\times e^{\beta_1\times 2 +\dots + \beta_kX_k}\\ HR &= \frac{h_0(t)\times e^{\beta_1\times 1+ \dots + \beta_kX_k}}{h_0(t)\times e^{\beta_1\times 2 +\dots + \beta_kX_k}} = e^{\beta_1\times(2-1)} = e^{\beta_1} \end{align*} $$
+
+À la différence du cas univarié, le coefficient $\beta$ est donné **relativement** au groupe 1.
+
+### Interprétation pour une variable $X_i$
+
+$$ HR=e^{\beta_i}\geq 0 $$
+
+-   $\beta_i = 0 \Rightarrow HR=1$ : pas d'effet de la variable $X_i$ sur le risque global $h$
+
+-   $\beta_i >0 \Rightarrow HR>1$ : augmentation du risque global $h$ lié à la variable $X_i$
+
+-   $\beta_i < 0 \Rightarrow HR<1$ : diminution du risque global $h$ lié à la variable $X_i$
+
+::: {style="color:green;"}
+AJOUT DE L INTERPRETATION k%
+:::
+
+```{r}
+variables <- colnames(heart_df)[0:11]
+
+formule <- as.formula(paste("Y ~", paste(variables, collapse = " + ")))
+
+Y = Surv(heart_df$time, heart_df$DEATH_EVENT)
+model_cox<- coxph(formule, data = heart_df)
+model_cox_summary = summary(model_cox)
+model_cox_summary
+```
+
+-   `coef` : estimation effet d'une variable sur le risque $h$. Positif : augmentation du risque, négatif : diminution du risque
+
+-   `exp(coef)` : risque proportionnel
+
+-   `se(coef)`: erreur standard
+
+-   `z` : si le coef est significativement différent de 0 : coef/se(coef)
+
+-   `concordance` : capacité prédictive du modèle $\rho_c=\frac{2\rho \sigma_x \sigma_y}{\sigma_x ^2 + \sigma_y ^2 (\mu_x-\mu_y)^2} = 1-\frac{\text{Exp orthogonal squared dist from diagonal x=y}}{\text{Same but assuming independance}}$
+
+-   **Test de Wald** : permet de\
+    $$H_0 : \beta_1=\beta_2=\dots =\beta_k =0$$
+
+    De statistique de test :\
+    $$W = \beta^T \Sigma ^{-1} \beta$$
+
+    Comme la p value est \< 0.05, alors, on rejette l'hypothèse selon laquelle les coefficients sont tous nuls.
+
+### Interprétation
+
+#### Evaluation globale
+
+La concordance étant une valeure entre 0 et 1, on peut se trouver satisfait d'une valeur aussi élevée sans pour autant être trop élevée, ce qui indiquerait que le modèle sur-apprend. Également le test de Wald nous pousse à rejeter significativement le fait que tous les coefficients de régressions sont nuls. Ce qui indique que le modèle parvient à donner des coefficients permettant d'approximer la survie.
+
+#### Evaluation par variable
+
+Nous ne pourront conclure que sur les variables pour lesquels le coefficient est significatifs (i.e. p-value inférieure à 0.05). Les variables significatives sont résumées dans ce tableau avec leur influence
+
+```{r}
+data <- data.frame(
+  Variable = c("age", "ejection_fraction", "serum_creatinine", "anaemia1", 
+               "creatinine_phosphokinase", "high_blood_pressure1"),
+  Coef_Sign = c("⬆", "⬇", "⬆", "⬆⬆", "⮕", "⬆⬆"),
+  Significativite = c("•••", "•••", "•••", "•", "•", "•")
+)
+
+data <- data[order(factor(data$Significativite, levels = c("***", "**", "*", ".", "")), decreasing = FALSE), ]
+
+data %>%
+  kbl(col.names = c("Variable", "Influence", "Significativité"),
+      caption = "Résumé des coefficients et leur significativité") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed"))
+```
+
+### Hypothèse des risques proportionnels
+
+(l'étape suivant est a but pédagogique, en pratique, il faudrait vérifier cette hypothèse avant de faire tourner le modèle de Cox)
+
+Comme précisé précédemment, on doit vérifier l'hypothèse d'indépendance au temps des covariables. En théorie, on a le test suivant :
+
+$$H_0 : \beta_j(t)=\beta_j\quad \forall t$$
+
+En d'autre terme, on veut tester si, pour une covariable $j$, son coefficient de regression $\beta_j$ reste constant sur toute la durée de l'étude. En pratique,
+
+```{r}
+test_schoenfeld <- cox.zph(model_cox)
+
+print(test_schoenfeld)
+plot(test_schoenfeld)
+```
+
+La p-value associée à chaque variable nous montre qu'on ne peut pas rejetter $H_0$ pour la plupart des variables au seuil de significativité de $5\%$, sauf pour ejection_fraction. D'après l'avie médical accompagnant ce rapport, c'est assez normal. En effet, un patient atteint d'insuffisance cardiaque aura une fraction d'ejection instable dans le temps. D'où le fait que cette variable apparaisse comme ayant une saisonalité.
+
+### Sélection de variable
+
+Le but est de maintenant réduire le nombre de variables du modèle. Pour cela, on peut faire un step AIC, le principe est de donner le score global du modèle avec l'AIC et de comparer ce score à celui des variables. On choisi alors de retirer les variables dont l'AIC est supérieur à celui du modèle global.
+
+$$
+AIC = 2\times k-2\log(\hat{L})
+$$
+
+où $k$ est le nombre de paramètres estimés dans le modèle et $\hat{L}$ la log vraissemblance du modèle.
+
+```{r}
+coxaic = stepAIC(model_cox)
+```
+
+```{r}
+coxbic = stepAIC(model_cox, k = log(nrow(heart_df)))
+```
+
+En utilisant le critère AIC, le score obtenu sur le modèle final est 951.83, les variables selectionnées sont : serum_sodium, creatinine_phosphokinase, anaemia, high_blood_pressure, serum_creatinine, age et ejection_fraction. Le BIC, lui, ne selectionne que le serum_creatinine, l'age, et l'ejection fraction pour un score global de 969.
+
+## Conclusion
+
+```{r}
+
+df <- data.frame(
+  name = rownames(model_cox_summary$coefficients),
+  beta = model_cox_summary$coefficients[, "coef"],
+  se = model_cox_summary$coefficients[, "se(coef)"],
+  pval = model_cox_summary$coefficients[,"Pr(>|z|)"]
+)
+
+ggforestplot::forestplot(
+  df = df,
+  name = name,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05
+) 
+```
+
+Ce graphique nous montre les coefficients de regressions, et leur intervalle de confiance, à partir du modèle de Cox. Tous les beta qui sont au dessus de $0$ augemente sensiblement le risque de mourrir d'une insuffisance cardiaque. On remarque alors que l'anemie, la pression artérielle une créatinine élevée (et le tabac, le diabète diabète et l'âge dans une moindre mesure) augemente réellement ce risque.
+
+### Avis médical
+
+fraction d'ejection : facteur protecteur =\> normal qu'il baisse la mortalité (fraceject ++ =\> eff du \<3 ++ =\> mortalité - - , fractejection - - =\> eff\<3 - - =\> mortalité ++)
+
+Tabac indicateur mais manque de granularité: nbpaquetAnnee, type de cigarette....
